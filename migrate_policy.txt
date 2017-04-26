@@ -1,0 +1,27 @@
+/*
+##############################################################################
+#
+# Sample migration policy to migrate files older than 30 days to TSM
+#
+##############################################################################
+*/
+
+/* define macros */
+define(is_migrated, (MISC_ATTRIBUTES LIKE '%V%'))
+define(is_empty,(FILE_SIZE=0))
+define(access_age_days, (DAYS(CURRENT_TIMESTAMP) - DAYS(ACCESS_TIME)))
+
+/* define exclude rule */
+RULE 'exclude' EXCLUDE WHERE (
+                    PATH_NAME LIKE '%/.SpaceMan/%'
+                 OR NAME LIKE '%dsmerror.log%'
+                 OR NAME LIKE '%.mmbackup%'
+                 OR NAME LIKE '%mmbackup%'
+                 OR PATH_NAME LIKE '%/.snapshots/%')
+
+/* Define hsm storage manager as an external pool */
+RULE EXTERNAL POOL 'hsm' EXEC '/var/mmfs/etc/mmpolicyExec-hsm.mig' OPTS '-v'
+
+/* Rule migrate files older than 30 days */
+RULE 'Migrate_30' MIGRATE FROM POOL 'system' TO POOL 'hsm' 
+WHERE (access_age_days > 30) AND NOT (is_migrated) AND NOT (is_empty)
