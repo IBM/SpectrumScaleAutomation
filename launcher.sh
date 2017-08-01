@@ -21,7 +21,11 @@ fsName="gpfs0"
 scriptPath="/root/silo"
 
 # log file directory
-logDir="/var/log/hsm"
+logDir="/var/log/automation"
+
+# define the node class where the operation has to run on, if not set it runs on the local node
+# if the local node is part of the node class it will be preferred
+nodeClass=""
 
 # log files for this type of operation to keep including this process - keep the $verKeep latest version
 verKeep=3
@@ -34,9 +38,6 @@ rcGood=0  # successful run
 rcWarn=1  # run was ok, some warnings however
 rcErr=2   # failed
 
-# initialize the local node 
-localNode=$(/usr/lpp/mmfs/bin/mmlsnode -N localhost | cut -d'.' -f1)
-
 # current date
 curDate="$(date +%Y%m%d%H%M%S)"
 
@@ -47,6 +48,7 @@ op="$1"
 #********************************************** MAIN *********************************
 
 # check operation and assign command
+# new operations can be added here
 case $op in
 "backup") 
   # runs DR-Backup
@@ -54,9 +56,18 @@ case $op in
 "migrate") 
   # runs selective migration (scheduled)
   cmd=$scriptPath"/migrate.sh";;
+"premigrate") 
+  # runs premigration
+  cmd=$scriptPath"/premigrate.sh";;
+"check")
+  # runs premigration
+  cmd=$scriptPath"/check_hsm.sh";;
+"test")
+  # just a simple test using ls
+  cmd="/usr/bin/ls";;
 *) echo "ERROR: wrong operation code: $op"
    echo "SYNTAX: $0 operation [file system name]"
-   echo "        operation: backup | migrate"
+   echo "        operation: backup | migrate | premigrate | check"
    echo "        file system name is optional, default is $fsName"
    exit $rcErr;;
 esac
@@ -82,14 +93,14 @@ then
 fi
 if [[ -z $fsName ]];
 then
-  echo "ERROR: file system name not defined. Either pass it as parameter to this script. Or initialized the global variable fsName" >> $logF
+  echo "CHECK: ERROR file system name not defined. Either pass it as parameter to this script. Or initialized the global variable fsName" >> $logF
   exit $rcErr
 fi
 mmlsfs $fsName > /dev/null 2>&1
 rc=$?
 if (( rc > 0 ));
 then
-  echo "ERROR: file system $fsName does not exist." >> $logF
+  echo "CHECK: ERROR file system $fsName does not exist." >> $logF
   exit $rcErr
 fi
 # now export the parameter $fsName which could be used by scripts being launched
@@ -98,9 +109,10 @@ export $fsName
 
 #check that localNode initialized above is not empty
 #perform this check prior deleting the log files to keep the previous one.
+localNode=$(mmlsnode -N localhost | cut -d'.' -f1)
 if [[ -z $localNode ]];
 then
-  echo "ERROR: local node name could not be initialized, node may be down." >> $logF
+  echo "CHECK: ERROR local node name could not be initialized, node may be down." >> $logF
   exit $rcErr
 fi
 
@@ -127,7 +139,7 @@ done
 
 #check if node is cluster manager
 echo "$(date) CHECK: checking if this node is cluster manager" >> $logF
-clusterMgr=$(/usr/lpp/mmfs/bin/mmlsmgr -c | sed 's|.*(||' | sed 's|)||')
+clusterMgr=$(mmlsmgr -c | sed 's|.*(||' | sed 's|)||')
 if [ "$localNode" != "$clusterMgr" ]; 
 then
   echo "INFO: this node is not cluster manager, exiting." >> $logF
@@ -135,29 +147,74 @@ then
   exit $rcGood
 fi
 
-# check if node is active
-echo "$(date) CHECK: checking if this node is active" >> $logF
-state=0
-state=$(mmgetstate | grep "$localNode" | awk '{print $3}')
-if [[ ! "$state" == "active" ]];
+#-------------------------------
+# determine the node to run this command based on node class and node and file system state
+localNode=$(mmlsnode -N localhost | cut -d'.' -f1)
+echo "INFO: local node is: $localNode" >> $logF
+allNodes=""
+sortNodes=""
+# if node class is set up determine node names in node class
+if [[ ! -z $nodeClass ]];
 then
-  echo "ERROR: node $localNode is not active (state=$state), exiting." >> $logF
-  exit $rcErr
+   echo "INFO: node class to select the node from is: $nodeClass" >> $logF
+   allNodes=$(mmlsnodeclass $nodeClass -Y | grep -v HEADER | cut -d':' -f 10 | sed 's|,| |g')
+   if [[ -z $allNodes ]]
+   then
+     echo "CHECK: WARNING node class $nodeClass is empty, using local node" >> $logF
+     sortNodes=$localNode
+   else
+     # reorder allNodes to have localNode first, if it exists
+     for n in $allNodes;
+     do
+       if [[ "$n" == "$localNode" ]];
+       then
+         sortNodes=$localNode" "$sortNodes
+       else
+         sortNodes=$sortNodes" "$n
+       fi
+     done
+   fi
+else
+   # if no node class is defined set the local node 
+   sortNodes=$localNode
 fi
 
-# check if file system is mounted
-echo "$(date) CHECK: checking if this node has file system $fsName mounted" >> $logF
-mounted=0
-mounted=$(mmlsmount $fsName -L | grep "$localNode" | wc -l)
-if (( mounted == 0 ));
-then 
-  echo "ERROR: file system $fsName is not mounted on node $localNode, exiting." >> $logF
+# select the node to execute the command based on state 
+echo "INFO: The following nodes are checked to run the operation: $sortNodes" >> $logF
+execNode=""
+for n in $sortNodes;
+do
+  # determine node state
+  state=$(mmgetstate -N $n -Y | grep -v ":HEADER:" | cut -d':' -f 9)
+  if [[ "$state" != "active" ]];
+  then
+	continue
+  else 
+	# determine file system state on node
+	mNodes=$(mmlsmount $fsName -Y | grep -v HEADER | grep -E ":RW:" | cut -d':' -f 12)
+	for m in $mNodes;
+	do
+	  if [[ "$m" == "$n" ]];
+	  then
+		execNode=$m
+      fi		
+	done
+	if [[ ! -z "$execNode" ]];
+	then
+	  break
+	fi
+  fi
+done
+
+if [[ -z "$execNode" ]];
+then
+  echo "$(date) CHECK: ERROR no node is in appropriate state to run the job, exiting." >> $logF
   exit $rcErr
 fi
-
 
 #now run the command according to the operation code assigned above and evaluate the result
-eval $cmd >> $logF 2>&1
+echo "$(date) CHECK: INFO Running command for $op on node $execNode" >> $logF
+ssh $execNode "$cmd" >> $logF 2>&1
 rc=$?
 if (( rc == 0 ));
 then 
@@ -172,3 +229,4 @@ else
   # send ERROR event ...
 fi
 exit $rc
+
