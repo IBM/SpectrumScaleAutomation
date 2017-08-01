@@ -34,10 +34,12 @@ all Spectrum Scale nodes with a manager role.
 ## launcher.sh: 
 This is the control component that is invoked by the scheduler. It checks if
 the node it is running on has the this is the cluster manager role. If this 
-is the case it continues by checking if the node and file system state is 
-appropriate, assigns and manages logfiles. Finally it starts the storage service
-operation (backup or migrate) whereby all output (STDOUT and STDERR) is written
-to the selected logfile. 
+is the case it selects a node from a pre-defined node class for running the
+storage service and thereby prefers the local node if this is member of the 
+node class or the node class is not defined. After selecting the node it 
+checks if the node and file system state is appropriate, assigns, manages 
+logfiles and finally starts the storage service operation (backup or migrate)
+using ssh. All output (STDOUT and STDERR) is written to the selected logfile. 
 
 
 Invokation:
