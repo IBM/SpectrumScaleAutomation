@@ -1,5 +1,31 @@
 #!/bin/bash
 #
+################################################################################
+# The MIT License (MIT)                                                        #
+#                                                                              #
+# Copyright (c) 2019 Nils Haustein                             				   #
+#                                                                              #
+# Permission is hereby granted, free of charge, to any person obtaining a copy #
+# of this software and associated documentation files (the "Software"), to deal#
+# in the Software without restriction, including without limitation the rights #
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell    #
+# copies of the Software, and to permit persons to whom the Software is        #
+# furnished to do so, subject to the following conditions:                     #
+#                                                                              #
+# The above copyright notice and this permission notice shall be included in   #
+# all copies or substantial portions of the Software.                          #
+#                                                                              #
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR   #
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,     #
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE  #
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER       #
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,#
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE#
+# SOFTWARE.                                                                    #
+################################################################################
+# 
+# Name: launcher.sh
+#
 # launcher script, checks if this is the cluster manager, performs some other checks, manages log files and launches the operation
 #
 # Invokation: launcher.sh operation [file system name]
@@ -7,8 +33,11 @@
 # Output: all output is logged to $logF
 #
 # Author: Nils Haustein
-#
+# 
+# Last update: 10/18/19
+# 
 #******************************************************************************************************** 
+
 # Export the path including the linux and GPFS binaries in case this script is invoked from a schedule
 export PATH=$PATH:/usr/bin:/usr/sbin:/usr/lpp/mmfs/bin
 #
@@ -23,9 +52,8 @@ scriptPath="/root/silo"
 # log file directory
 logDir="/var/log/automation"
 
-# define the node class where the operation has to run on, if not set it runs on the local node
-# if the local node is part of the node class it will be preferred
-nodeClass=""
+# defined the node class where the operation has to run on, if not set it runs on the local node
+nodeClass="all"
 
 # log files for this type of operation to keep including this process - keep the $verKeep latest version
 verKeep=3
@@ -186,10 +214,8 @@ for n in $sortNodes;
 do
   # determine node state
   state=$(mmgetstate -N $n -Y | grep -v ":HEADER:" | cut -d':' -f 9)
-  if [[ "$state" != "active" ]];
+  if [[ "$state" == "active" ]];
   then
-	continue
-  else 
 	# determine file system state on node
 	mNodes=$(mmlsmount $fsName -Y | grep -v HEADER | grep -E ":RW:" | cut -d':' -f 12)
 	for m in $mNodes;
@@ -199,6 +225,7 @@ do
 		execNode=$m
       fi		
 	done
+	# if we found a node active with file system mounted then leave the loop
 	if [[ ! -z "$execNode" ]];
 	then
 	  break
@@ -229,4 +256,3 @@ else
   # send ERROR event ...
 fi
 exit $rc
-
