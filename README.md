@@ -22,6 +22,9 @@ The framework requires that all cluster nodes with a manager role assigned must
 be able to run the automation components. These nodes must not necessarily be 
 the nodes performing the storage service operation but must be able to launch it.
 
+## Disclaimer and license
+This project is under [MIT license](LICENSE).
+
 --------------------------------------------------------------------------------
 
 # Components
