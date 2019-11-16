@@ -29,64 +29,81 @@
 # migrate script, does the following
 # - migrates files according to pre-defined policy
 #
-# Invokation: migrate.sh [file system name]
-#             file system name is optional, can also be passed through an exported variable
+# Invokation: migrate.sh file-system-name [policy-file-name]
+#             file-system-name is the name of the file system to be backed up
+#             policy-file-name (optional) name of the policyfile 
 #
 # Output: all output is logged to STDOUT
 #
 # Author: Nils Haustein
 # 
-# Last update: 10/18/19
+# Change History
+# --------------
+# 2017: first implementation for client project
+# 10/18/19: added license for github
+# 11/14/19: add GPFS path for GPFS commands
+# 11/15/19: add policy file name passed with the call
 # 
 #******************************************************************************************************** 
 #
 # Global definitions
 #--------------------
-# file system name is either given with $1 or it is exported as fsName or we initialize it with a default
-if [[ -z $1 ]];
-then
-   if [[ -z $fsName ]];
-   then
-     # ADJUST: initialize fsName with default name which is only applied if $1 is empty and fsName has not been exported
-	 fsName=""
-   fi
-else
-   fsName="$1"
-fi
 
-# ADJUST: name of the policy file used for migration, such as migrate_policy.txt
-polName=""
+# default fully qualified path and file name of the policy fie. This is used if the policy file name is not given with the call
+def_polName="./migrate_policy.txt"
 
 # ADJUST: directory for temp files of policy engine (-s parameter), the default (/tmp)
 workDir=""
 
 # ADJUST: mmapplypolicy parameters 
-mmapplyOpts="-N nsdNodes -m 1 -B 256"
+mmapplyOpts="-N nsdNodes -m 1 -B 1000 --single-instance"
+
+
+# Constants
+# -----------
+
+# GPFS path to binaries
+gpfsPath="/usr/lpp/mmfs/bin"
 
 #define return codes
 rcGood=0  # successful run
 rcWarn=1  # run was ok, some warnings however
 rcErr=2   # failed
-
 # global return code
 globalRC=0
+
+# name of the file system for the operation
+fsName="$1"
+
+# name of the policy file used for migration, given with the call
+polName="$2"
 
 
 #**************************** Main ************************************
 # present banner
-echo "$(date) MIGRATE: migration operation started on $(hostname)."
+echo "$(date) MIGRATE: migration operation started on $(hostname) for file system $fsName."
 
 # check if file system is initialized
 if [[ -z $fsName ]];
 then 
-  echo "ERROR: file system name is not initialized, exit"
+  echo "MIGRATE: ERROR file system name is not initialized, exit"
   exit $rcErr
 fi
 
 # check if policy file exists
+if [[ -z $polName ]];
+then
+  if [[ ! -z $def_polName ]];
+  then
+    polName=$def_polName
+  else
+    echo "MIGRATE: ERROR policy file name not specified, exiting."
+    exit $rcErr
+  fi
+fi
 if [[ ! -a $polName ]]; 
 then
-  echo "ERROR: policy file $polName does not exist. Exit."
+  echo "MIGRATE: ERROR policy file $polName does not exist. Exit."
   exit $rcErr
 fi
 
@@ -97,20 +114,20 @@ then
 fi
 
 #start migration
-echo "$(date) MIGRATE: Starting  migration"
+echo "$(date) MIGRATE: Starting  migration for file system $fsName with policyfile $polName"
 echo "DEBUG: mmapplypolicy $fsName -P $polName $mmapplyOpts"
-mmapplypolicy $fsName -P $polName $mmapplyOpts
+$gpfsPath/mmapplypolicy $fsName -P $polName $mmapplyOpts
 rc=$?
 echo "$(date) MIGRATE: Finished migration (rc=$rc)"
 if (( rc > 0 ));
 then
-  echo "ERROR: Migration failed with return code $rc"
+  echo "MIGRATE: ERROR Migration failed with return code $rc"
   (( globalRC=globalRC+1 ))
 fi
 
 
 # present ending banner
-echo "$(date) MIGRATE: operation ended on $(hostname) with gobalRC=$globalRC."
+echo "$(date) MIGRATE: operation ended on $(hostname) for file system $fsName with policy $polName with gobalRC=$globalRC."
 if (( globalRC > 0 ));
 then
   exit $rcErr
