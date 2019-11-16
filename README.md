@@ -7,7 +7,7 @@ IBM Spectrum Scale™ is a software-defined scalable parallel file system storag
 The framework includes the following components, which are further detailed below:
 - The control components [launcher](launcher.sh) selects the appropriate cluster node initiating the storage service operation, starts the storage service if the node state is appropriate, manages logging, log-files and return codes and sends events in accordance to the result of the storage server. The control component is typically invoked by the scheduler and the storage services being started might be backup or storage tiering.
 - The backup component [backup](backup.sh) performs the backup using the mmbackup-command 
-- The storage tiering component [migrate] (migrate.sh) performs pre-migration or migration using the mmapplypolicy-command
+- The storage tiering component [migrate](migrate.sh) performs pre-migration or migration using the mmapplypolicy-command
 - The scheduler that invokes the control component. An example is cron.
 
 The framework requires that all cluster nodes with a manager role assigned must be able to run the automation components. These nodes must not necessarily be the nodes performing the storage service operation but must be able to launch it.
@@ -62,6 +62,7 @@ The second-argument depends on the operation that is started by the launcher.
 - For check the second argument can be the name of the component to be checked. 
 
 The following parameters can be adjusted within the launcher script:
+
 | Parameter | Description |
 | ----------|-------------|
 | def_fsName | default file system name, if this is set and $2 is empty this name is used. If $2 is given then this parameter is being ignored. Best practice is to not set this parameter. |
@@ -93,14 +94,17 @@ The launcher script can raise events in accordance to the return code of the sto
 - cron_error: is raised when the operation completed with return 2 (Error)
 
 Find below an example for an cron_error event:
+
 	2019-11-15 06:33:12.307057 EST        cron_error                ERROR      Process backup for file system fs1 ended with ERRORS on node spectrumscale. See log-file /var/log/automation/debug.log and determine the root cause before running the process again
 
 This file must be installed in directory /usr/lpp/mmfs/lib/mmsysmon on each node that can runs the launcher (manager nodes). First check if a custom.json file is already installed in this directory. If this is the case then add this custom.json to the existing file. Ensure the the event_id tags are unique. It is recommended to copy the file to /var/mmfs/mmsysmon/custom.json and create a symlink to this file under /usr/lpp/mmfs/lib/mmsysmon/. 
 
 Once the custom.json file is copied the system monitor componented needs to be restarted
+
 	# systemctl restart mmsysmon.service
 
 Now test if the custom even definition has been loaded:
+
 	# mmhealth event show 888331
 
 You are good to go if the event definition is shown. Otherwise investigate the issue in the /var/adm/ras/mmsysmon*.log files.
@@ -125,6 +129,7 @@ The launcher component typically invokes the backup components with the file sys
 If a fileset name is given then the backup component checks if the fileset exists and is linked. If this is the case the optional snapshot and backup operation is performed for this fileset. 
 
 The following parameters can be adjusted within the backup script:
+
 | Parameter | Description |
 | ----------|-------------|
 | tsmServ | specifies the name of TSM server to be used with mmbackup. If not set then the default server is used. |
@@ -159,6 +164,7 @@ The launcher component typically invokes the migrate components with the file sy
 If a policy file name is given then the migrate component checks if the policy file exists. If this is the case then the migrate operation is performed. If migration needs to be done for particular filesets then this can be specified within the policy file. 
 
 The following parameters can be adjusted within the migrate script:
+
 | Parameter | Description |
 | ----------|-------------|
 | def_polName | default name of the policy file. This name is used if the policy file name is not given with the call. |
