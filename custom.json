@@ -1,0 +1,38 @@
+{        
+        "cron_info":{
+               "cause":"An automated process ended successful.",
+               "user_action":"None",
+               "entity_type":"FILESYSTEM",
+               "scope":"NODE",
+               "code":"888331",
+               "description":"An automated process ended successful.",
+               "event_type":"INFO",
+               "message":"Process {1} for file system {0} ended SUCCESSFUL on node {2}.",
+               "severity":"INFO"
+        },
+
+        "cron_warning":{
+               "cause":"An automated process ended with warnings.",
+               "user_action":"Check the log files to determine the root cause. Run the process again.",
+               "entity_type":"FILESYSTEM",
+               "scope":"NODE",
+               "code":"888332",
+               "description":"A automated process ended with warnings, check the message section.",
+               "event_type":"INFO",
+               "message":"Process {1} for file system {0} ended with WARNINGS on node {2}. See log-file {3}. Run this process again and observe the results.",
+               "severity":"WARNING"
+        },
+
+        "cron_error":{
+               "cause":"An automated process failed.",
+               "user_action":"Check the log files to determine the root cause. Correct the problem and run the process again.",
+               "entity_type":"FILESYSTEM",
+               "scope":"NODE",
+               "code":"888333",
+               "description":"An automated process failed, check the message section.",
+               "event_type":"INFO",
+               "message":"Process {1} for file system {0} ended with ERRORS on node {2}. See log-file {3} and determine the root cause before running the process again",
+               "severity":"ERROR"
+        }
+}
+
