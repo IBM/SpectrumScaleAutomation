@@ -50,9 +50,9 @@ Invokation and processing
 	operation:			is the storage service to be performed: backup, migrate, (check, test). 
 	file-system-name: 	is the name of the file system which is in scope of the storage service
 	second-argument: 	is a second argument passed to the storage service script (optional)
-						for backup: it can specify the fileset name when required
-						for migrate: it can specify the policy file name
-						for check: it can specify the component
+		for backup: it can specify the fileset name when required
+		for migrate: it can specify the policy file name
+		for check: it can specify the component
 
 The file system name can also be defined within the launcher.sh script. In this case the file system name does not have to be given with call. If the file system name is given with the call then it takes precedence over the define file system name within the scrip. The file system name must either be given with the call or it must be defined within launcher script-
 
