@@ -31,49 +31,49 @@
 # - perform mmbackup 
 # - delete snapshot when required
 #
-# Invokation: backup.sh [file system name]
-#             file system name is optional, can also be passed through an exported variable
+# Invokation: backup.sh file-system-name [fileset-name]
+#             file-system-name is the name of the file system to be backed up
+#             file-set-name (optional) name of the independent fileset to backup from
 #
 # Output: all output is logged to STDOUT
 #
 # Author: Nils Haustein
+#
 # 
-# Last update: 10/18/19
-# 
+# Change History
+# --------------
+# 2017: first implementation for client project
+# 10/18/19: added license for github
+# 11/14/19: add GPFS path for GPFS commands
+# 11/15/19; added the option to backup from fileset, fileset name is given with the call
 ##################################################################################
 
 #
-# Global definitions
-#--------------------
-# file system name is either given with $1 or it is exported as fsName or we initialize it with a default
-if [[ -z $1 ]];
-then
-   if [[ -z $fsName ]];
-   then
-     # initialize fsName with default name which is only applied if $1 is empty and fsName has not been exported
-	 fsName=""
-   fi
-else
-   fsName="$1"
-fi
-
+# User defined parameters
+# -----------------------
+#
 # name of TSM server to be used with mmbackup, if not set then we used the default server
 tsmServ=""
-
-# directory for temp files during mmbackup (-s parameter with mmbackup), if not set we use the default (/tmp)
-workDir=""
 
 # name of global snapshot for mmbackup, if this is not set then mmbackup will not backup from snapshot
 snapName=""
 
 # mmbackup parameters to be used with mmbackup, adjust if necessary
-mmbackupOpts="-N nsdNodes -v --max-backup-count 4096 --max-backup-size 80M --backup-threads 1 --expire-threads 1"
+backupOpts="-N nsdNodes -v --max-backup-count 4096 --max-backup-size 80M --backup-threads 2 --expire-threads 2"
+
+# Constants
+# ----------
+# specifies the path for the GPFS binaries
+gpfsPath="/usr/lpp/mmfs/bin"
 
 #define return codes
 rcGood=0  # successful run
 rcWarn=1  # run was ok, some warnings however
 rcErr=2   # failed
 
+# default file system name
+fsName="$1"
+fsetName="$2"
 
 #*************************** Main ***************************
 # present banner
@@ -82,17 +82,37 @@ echo "$(date) BACKUP: backup operation for file system $fsName started on $(host
 # check if file system is initialized
 if [[ -z $fsName ]];
 then 
-  echo "ERROR: file system name is not initialized, exit"
+  echo "BACKUP: ERROR file system name is not initialized, exit"
   exit $rcErr
+fi
+
+# if fileset name is given then check if fileset exists
+if [[ ! -z $fsetName ]];
+then
+  fsetPath=$($gpfsPath/mmlsfileset $fsName $fsetName | grep "$fsetName" | grep "Linked" | awk '{print $3}')
+  if [[ -z $fsetPath ]];
+  then 
+    echo "BACKUP: ERROR fileset $fsetName does not exist in filesystem $fsName or is not linked"
+	exit $rcErr
+  else
+    echo "BACKUP: fileset $fsetName is on path $fsetPath"
+  fi
 fi
 
 # check if snapshot is required and if so check if one exist already and if so exit, otherwise, create snapshot
 if [[ ! -z $snapName ]];
 then 
+  # assign special options if this is a file set level snapshot
+  if [[ ! -z $fsetName ]];
+  then 
+    snapOpts="-j $fsetName"
+  else
+    snapOpts=""
+  fi
   # check if snapshot exists and if so exit with ERROR
-  echo "$(date) BACKUP: checking if snapshots $snapName exist on $fsName"
+  echo "BACKUP: checking if snapshot $snapName exist on $fsName $snapOpts"
   snaps=""
-  snaps=$(mmlssnapshot $fsName -Y | grep -v ":HEADER:" | cut -d':' -f 8)
+  snaps=$($gpfsPath/mmlssnapshot $fsName $snapOpts -Y | grep -v ":HEADER:" | cut -d':' -f 8)
   for s in $snaps
   do
     if [[ "$s" == "$snapName" ]];
@@ -102,13 +122,19 @@ then
     fi
   done
   # create snapshot and if this fails exit with ERROR
-  echo "$(date) BACKUP: Creating snapshot $snapName"
-  #echo "DEBUG: mmcrsnapshot $fsName $snapName"
-  mmcrsnapshot $fsName $snapName
+  if [[ ! -z $fsetName ]];
+  then 
+    snapOpts="$fsetName:$snapName"
+  else
+    snapOpts="$snapName"
+  fi
+  echo "$(date) BACKUP: Creating snapshot $snapOpts for file system $fsName"
+  echo "BACKUP: DEBUG mmcrsnapshot $fsName $snapOpts"
+  $gpfsPath/mmcrsnapshot $fsName $snapOpts
   rc=$?
   if (( rc > 0 ));
   then
-    echo "BACKUP: ERROR create snapshot failed with rc=$rc"
+    echo "BACKUP: ERROR create snapshot $snapOpts failed with rc=$rc"
     exit $rcErr
   fi
 fi
@@ -144,40 +170,48 @@ if [[ ! -z $rebuild ]];
 then
   bOpts="$bOpts -q"
 fi 
-if [[ ! -z $workDir ]];
+if [[ ! -z $fsetName ]];
 then
-  bOpts="$bOpts -s $workDir"
+   fsDev=$fsetPath
+   bOpts="$bOpts --scope inodespace"
+else
+   fsDev=$fsName
 fi
 
-echo "DEBUG: mmbackup $fsName $bOpts $mmbackupOpts"
+echo "BACKUP: DEBUG mmbackup $fsDev $bOpts $backupOpts"
 mmbackup_rc=0
-mmbackup $fsName $bOpts $mmbackupOpts
+$gpfsPath/mmbackup $fsDev $bOpts $backupOpts
 mmbackup_rc=$?
 #examine mmbackup return code: 0 good, 1 warning, 2 error
 if (( mmbackup_rc > 0 ));
 then
   if (( mmbackup_rc > 1 ));
   then 
-    echo "BACKUP: ERROR mmbackup failed with rc=$mmbackup_rc, deleting snapshot and exiting"
+    echo "BACKUP: ERROR mmbackup for $fsDev failed with rc=$mmbackup_rc."
     mmbackup_rc=2
   else
-    echo "BACKUP: WARNING mmbackup ended with rc=$mmbackup_rc, deleting snapshot and exiting."
+    echo "BACKUP: WARNING mmbackup for $fsDev ended with rc=$mmbackup_rc."
   fi
 fi
 
 #delete snapshot when required
 if [[ ! -z $snapName ]];
 then
+  if [[ ! -z $fsetName ]];
+  then 
+    snapOpts="$fsetName:$snapName"
+  else
+    snapOpts="$snapName"
+  fi
   echo "$(date) BACKUP: Deleting snapshot $snapName"
-  # echo "DEBUG: mmdelsnapshot $fsName $snapName"
-  mmdelsnapshot $fsName $snapName
+  echo "BACKUP: DEBUG mmdelsnapshot $fsName $snapOpts"
+  $gpfsPath/mmdelsnapshot $fsName $snapOpts
   rc=$?
   if (( rc > 0 )); 
   then 
-    echo "BACKUP: ERROR deleting snapshot $snapName failed with rc=$rc"
+    echo "BACKUP: ERROR deleting snapshot $snapOpts failed with rc=$rc"
   fi
 fi
-
 
 # evaluate return codes and exit according to defined return codes
 if (( mmbackup_rc > 1 ));
