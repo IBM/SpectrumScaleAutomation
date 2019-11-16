@@ -134,8 +134,7 @@ The following parameters can be adjusted within the backup script:
 | ----------|-------------|
 | tsmServ | specifies the name of TSM server to be used with mmbackup. If not set then the default server is used. |
 | snapName | specifies the name of snapshot for mmbackup. If not set then mmbackup will not backup from snapshot. If the snapshot name is given then the backup script will check if a snapshot with this name exists. If this is the case it will exit with an error. If not then the backup script creates a snapshot. If the fileset name is specified then the backup script creates a snapshot for the fileset only. After the mmbackup run the snapshot is deleted by the backup script. |
-| backupOpts | specifies special parameters to be used with mmbackup command. Consider the following example as guidance: 
-"-N nsdNodes -v --max-backup-count 4096 --max-backup-size 80M --backup-threads 2 --expire-threads 2" |
+| backupOpts | specifies special parameters to be used with mmbackup command. Consider the following example as guidance: "-N nsdNodes -v --max-backup-count 4096 --max-backup-size 80M --backup-threads 2 --expire-threads 2" |
 
 
 Return codes:
