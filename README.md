@@ -180,7 +180,7 @@ Return codes:
 2 -  Operation completed with ERRORS
 
 
-### migrate_policy.txt
+### [migrate_policy.txt](migrate_policy.txt)
 
 
 Example policy that migrates files older than 30 days from system pool to IBM Spectrum Protect. A policy like this has to be used with the migrate.sh script where it is referenced with parameter $polName. It is an example and might need adjustments.
