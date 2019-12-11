@@ -26,7 +26,7 @@
 # 
 # Name: launcher.sh
 #
-# Version 2.0
+# Version 2.1
 #
 # launcher script, checks if this is the cluster manager, performs some other checks, manages log files and launches the operation
 #
@@ -51,6 +51,8 @@
 #           add GPFS command path to all GPFS commands   
 #           add sending events if the custom json exists
 # 11/15/19: add second argument for the service script (optional)
+# 12/11/19: implement check option with check_spectrumarchive.sh
+#           define event codes as constants and check if they are defined in the custom event file
 #
 #******************************************************************************************************** 
 
@@ -65,6 +67,9 @@ def_fsName=""
 
 # path where the automation scripts are located
 scriptPath="/root/silo/automation"
+
+# path and file name of the check program to be executed with the check option
+checkScript="/root/silo/automation/check_spectrumarchive.sh"
 
 # defined the node class where the operation has to run on, if not set it runs on the local node
 # if local node is not the cluster manager then it will not run on local node
@@ -83,19 +88,25 @@ verComp=3
 # define constants
 # ----------------
 # version of the launcher program
-ver="2.0"
+ver="2.1"
 # path for the GPFS binaries
 gpfsPath="/usr/lpp/mmfs/bin"
 
+# current date
+curDate="$(date +%Y%m%d%H%M%S)"
+
+# define the custom event IDs as they are defined in the custom.json example
+# if the event IDs are changed in the custom.json, it must be adjusted here. 
+eventGood=888331
+eventWarn=888332
+eventErr=888333
+
 # custom event definition file
-eventFile="/usr/lpp/mmfs/lib/mmsysmon/custom.json"
-# if the event definition file exist then set sendEvent to 1
-if [[ -a $eventFile ]];
-then
-  sendEvent=1
-else
-  sendEvent=0
-fi
+customJson="/usr/lpp/mmfs/lib/mmsysmon/custom.json"
+
+# send events = 1 means we will send events if the custom.json file with the event codes exists
+sendEvent=0
+
 
 # define return codes
 # ------------------
@@ -103,13 +114,15 @@ rcGood=0  # successful run
 rcWarn=1  # run was ok, some warnings however
 rcErr=2   # failed
 
-# current date
-curDate="$(date +%Y%m%d%H%M%S)"
 
-# global variables used within the program
-# ----------------------------------------
+# assign the arguments passed to the launcher
+# -------------------------------------------
+
 # operation code is in $1
 op="$1"
+
+# file system name is $2
+fsName="$2"
 
 # optional argument $3 depends on operation
 #  for backup: it can specify the fileset name
@@ -117,14 +130,15 @@ op="$1"
 #  for check: it can specify the component
 secArg="$3"
 
-# other variables
-fsName=""
+# other global variables
+localNode=$($gpfsPath/mmlsnode -N localhost | cut -d'.' -f1)
 fsetName=""
 polFileName=""
 compName=""
 errMsg=""
 errCode=""
-execNode=""
+# temporarily set execNode to localnode
+execNode=$localNode
 logF=""
 
 #********************************************** MAIN *********************************
@@ -138,7 +152,8 @@ case $op in
   if [[ ! -z $secArg ]]; 
   then
     fsetName=$secArg
-  fi ;;  
+  fi;;  
+
 "migrate") 
   # runs selective migration (scheduled)
   cmd=$scriptPath"/migrate.sh"
@@ -146,6 +161,7 @@ case $op in
   then
     polFileName=$secArg
   fi ;;  
+
 "premigrate") 
   # runs selective pre-migration (scheduled)
   cmd=$scriptPath"/premigrate.sh"
@@ -153,24 +169,24 @@ case $op in
   then
     polFileName=$secArg
   fi ;;  
+
 "check")
   # runs check
+  cmd=$checkScript
   if [[ ! -z $secArg ]]; 
   then
     compName=$secArg
-  fi
-  # we have not implemented a check program. Consider to use check_spectrumarchive.sh or check_hsm.sh
-  errMsg="LAUNCH: ERROR check program has not been implemented. Adjust this script to implement the check program"
-  errCode=$rcErr;;
+  fi;;
+
 "test")
   # just a simple test using ls
   cmd="/usr/bin/ls";;
 
-*) errMsg=$errMsg"LAUNCH: ERROR: wrong operation code: $op \
-   SYNTAX: $0 operation [file system name] [second-argumen]\
-           operation: backup | migrate | premigrate | check \
-           file system is the name of the file system in scope for the storage servic \
-		   second argument is an optional argument passed to the storage serice script" 
+*) errMsg=$errMsg"LAUNCH: ERROR: wrong operation code: $op\n \
+   SYNTAX: $0 operation [file system name] [second-argumen]\n \
+   \t operation: backup | migrate | premigrate | check\n \
+   \t file system is the name of the file system in scope for the storage service \n \
+   \t second argument is an optional argument passed to the storage serice script \n" 
    errCode=$rcErr;;
 esac
 
@@ -192,39 +208,72 @@ logF=$logDir"/"$op"_"$curDate".log"
 
 #present banner and initialize log file
 echo "$(date) LAUNCH: launcher version $ver started with operation $op $secArg on node $(hostname)" > $logF
+echo >> $logF
 
+# check if events are enabled and set sendEvent accordingly
+out=""
+notExist=0
+sendEvent=0
+# check if custom event file exists
+if [[ -a $customJson ]];
+then
+  # now check if the eventCodes are included
+  for e in $eventGood $eventWarn $eventErr; 
+  do
+	out=""
+	out=$(grep $e $customJson)
+	if [[ -z $out ]]; then notExist=1; break; fi
+  done
+  if (( $notExist == 0 )); then sendEvent=1; fi
+fi
+echo "LAUNCH: send Event is set to $sendEvent" >> $logF
+
+ 
 #if there was an error before write it to the log and exit
 if [[ ! -z $errMsg ]];
 then
-  echo $errMsg >> $logF
+  echo -e $errMsg >> $logF
   if [[ -z $2 ]]; then fsName=UNKNOWN; fi
   execNode=$($gpfsPath/mmlsnode -N localhost | cut -d'.' -f1)
   if [[ -z $op ]]; then op=UNKNOWN; fi
   if (( sendEvent == 1 )); 
   then 
-    $gpfsPath/mmsysmonc event custom 888333 "$fsName,$op,$execNode,$logF" >> $logF 2>&1
+    $gpfsPath/mmsysmonc event custom $eventErr "$fsName,$op,$execNode,$logF" >> $logF 2>&1
   fi
   exit $errCode
 fi
 
-#assign and check file system name. If $2 is set then use this, if not use the default name (def_fsName). If this is empty then terminate
-echo "LAUNCH: assigning and checking file system name" >> $logF
-if [[ ! -z $2 ]];
-then 
-  fsName=$2
-elif [[ ! -z $def_fsName ]];
-then 
-  fsName=$def_fsName
-fi
-if [[ -z $fsName ]];
+
+# check if command scripts executing the storage operation exist on this node
+if [[ ! -a $cmd ]];
 then
-  echo "LAUNCH: ERROR file system name not defined. Either pass it as parameter to this script. Or initialized the global variable fsName" >> $logF
+  echo "LAUNCH: ERROR command $cmd does not exists. Make sure that the script path is set and the scripts are placed in this path (current script path: $scriptPath, check script: $checkScript" >> $logF
   if (( sendEvent == 1 )); 
   then 
-    $gpfsPath/mmsysmonc event custom 888333 "$fsName,$op,$execNode,$logF" >> $logF 2>&1
+    $gpfsPath/mmsysmonc event custom $eventErr "$fsName,$op,$execNode,$logF" >> $logF 2>&1
   fi
   exit $rcErr
 fi
+  
+
+#assign and check file system name. If $2 is set then use this, if not use the default name (def_fsName). If this is empty then terminate
+echo "LAUNCH: assigning and checking file system name" >> $logF
+if [[ -z $fsName ]];
+then 
+  if [[ ! -z $def_fsName ]];
+  then 
+    fsName=$def_fsName
+  else
+    echo "LAUNCH: ERROR file system name not defined. Either pass it as parameter to this script. Or initialized the global variable fsName" >> $logF
+    if (( sendEvent == 1 )); 
+    then 
+      $gpfsPath/mmsysmonc event custom $eventErr "$fsName,$op,$execNode,$logF" >> $logF 2>&1
+    fi
+    exit $rcErr
+  fi
+fi
+
+# check if the file system exists
 $gpfsPath/mmlsfs $fsName > /dev/null 2>&1
 rc=$?
 if (( rc > 0 ));
@@ -232,15 +281,22 @@ then
   echo "LAUNCH: ERROR file system $fsName does not exist." >> $logF
   if (( sendEvent == 1 )); 
   then 
-    $gpfsPath/mmsysmonc event custom 888333 "$fsName,$op,$execNode,$logF" >> $logF 2>&1
+    $gpfsPath/mmsysmonc event custom $eventErr "$fsName,$op,$execNode,$logF" >> $logF 2>&1
   fi
   exit $rcErr
 fi
 # now export the parameter $fsName which could be used by scripts being launched
 export fsName=$fsName
-# add the fsname to the command because we are using ssh
-cmd=$cmd" $fsName $secArg"
 
+
+# compose the command (operation) to run
+# if we run the check operation do not include the file system name
+if [[ "$op" == "check" ]];
+then 
+  cmd=$cmd" $secArg"
+else 
+  cmd=$cmd" $fsName $secArg"
+fi
 
 #check that localNode initialized above is not empty
 #perform this check prior deleting the log files to keep the previous one.
@@ -250,7 +306,7 @@ then
   echo "LAUNCH: ERROR local node name could not be initialized, node may be down." >> $logF
   if (( sendEvent == 1 )); 
   then 
-    $gpfsPath/mmsysmonc event custom 888333 "$fsName,$op,$execNode,$logF" >> $logF 2>&1
+    $gpfsPath/mmsysmonc event custom $eventErr "$fsName,$op,$execNode,$logF" >> $logF 2>&1
   fi
   exit $rcErr
 fi
@@ -288,7 +344,6 @@ fi
 
 #-------------------------------
 # determine the node to run this command based on node class and node and file system state
-localNode=$($gpfsPath/mmlsnode -N localhost | cut -d'.' -f1)
 echo "LAUNCH: INFO local node is: $localNode" >> $logF
 allNodes=""
 sortNodes=""
@@ -349,21 +404,23 @@ then
   echo "$(date) LAUNCH: ERROR no node is in appropriate state to run the job, exiting." >> $logF
   if (( sendEvent == 1 )); 
   then 
-    $gpfsPath/mmsysmonc event custom 888333 "$fsName,$op,$execNode,$logF" >> $logF 2>&1
+    $gpfsPath/mmsysmonc event custom $eventErr "$fsName,$op,$execNode,$logF" >> $logF 2>&1
   fi
   exit $rcErr
 fi
 
-#now run the command according to the operation code assigned above and evaluate the result
+#now run the command according to the operation code assigned above 
 echo "$(date) LAUNCH: INFO Running command $cmd on node $execNode" >> $logF
 ssh $execNode "$cmd" >> $logF 2>&1
 rc=$?
+
+# evaluate the result of the command and send the event if this is enabled
 if (( rc == 0 ));
 then 
   echo "$(date) LAUNCH: command $cmd finished with status=GOOD" >> $logF
   if (( sendEvent == 1 )); 
   then 
-    $gpfsPath/mmsysmonc event custom 888331 "$fsName,$op,$execNode" >> $logF 2>&1 
+    $gpfsPath/mmsysmonc event custom $eventGood "$fsName,$op,$execNode" >> $logF 2>&1 
   fi
 elif (( rc == 1 ));
 then
@@ -371,7 +428,7 @@ then
   # send WARNING event ...
   if (( sendEvent == 1 )); 
   then 
-    $gpfsPath/mmsysmonc event custom 888332 "$fsName,$op,$execNode,$logF" >> $logF 2>&1
+    $gpfsPath/mmsysmonc event custom $eventWarn "$fsName,$op,$execNode,$logF" >> $logF 2>&1
   fi
 else
   echo "$(date) LAUNCH: command $cmd finished with status=ERROR (rc=$rc)" >> $logF
@@ -379,7 +436,7 @@ else
   # send ERROR event ...
   if (( sendEvent == 1 )); 
   then 
-    $gpfsPath/mmsysmonc event custom 888333 "$fsName,$op,$execNode,$logF" >> $logF 2>&1
+    $gpfsPath/mmsysmonc event custom $eventErr "$fsName,$op,$execNode,$logF" >> $logF 2>&1
   fi
 fi
 
