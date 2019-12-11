@@ -77,12 +77,15 @@ The following parameters can be adjusted within the launcher script:
 ### Examples for running storage services
 
 To run backup for file system `gpfs0` and for fileset `test01` run this launcher command:
+
 	# launcher.sh backup gpfs0 test01
 
 To run migration for file system `gpfs0` and with policy file `/hone/shared/mig_policy` run this launcher command
+
 	# launcher.sh migrate gpfs0 /hone/shared/mig_policy
 
 To run check for IBM Spectrum Archive EE run this launcher command (the file system name which is enabled for space management must be given with the command, in this example `gpfs0`):
+
 	# launcher.sh check gpfs0 -e
 	
 Upon completion of the storage service the launcher component can raise custom events. The custom events are defined in the file [custom.json](custom.json). This file must be copied to /usr/lpp/mmfs/lib/mmsysmon. If this file exists then the script will automatically raise events. If a custom.json exist for another reason and it is not desired to raise events the parameter sendEvent within the launcher script can be manually adjusted to a value of 0. 
@@ -109,15 +112,15 @@ To integrate this utility with the IBM Spectrum Scale event monitoring framework
 |------------|------------|-------------------|
 | cron_info | 888331 | is send if the operation ended successful (return code 0) |
 | cron_warning | 888332 | is send if the operation ended with WARNINGS (return code 1). |
-| checkee_error | 888343 | is send if the operatio ended with ERRORS (return code 2). |
+| checkee_error | 888333 | is send if the operatio ended with ERRORS (return code 2). |
 
-The script will automatically determine if the custom event have been installed and configured in  /usr/lpp/mmfs/lib/mmsysmon/custom.json. 
+The script will automatically determine if the custom event have been installed and configured in  `/usr/lpp/mmfs/lib/mmsysmon/custom.json`. 
 
 Find below an example for an cron_error event:
 
 	2019-11-15 06:33:12.307057 EST        cron_error                ERROR      Process backup for file system fs1 ended with ERRORS on node spectrumscale. See log-file /var/log/automation/debug.log and determine the root cause before running the process again
 
-This file must be installed in directory /usr/lpp/mmfs/lib/mmsysmon on each node that can runs the launcher (manager nodes). First check if a custom.json file is already installed in this directory. If this is the case then add this custom.json to the existing file. Ensure the the event_id tags are unique. It is recommended to copy the file to /var/mmfs/mmsysmon/custom.json and create a symlink to this file under /usr/lpp/mmfs/lib/mmsysmon/. 
+This [custom.json](custom.json) file must be installed in directory `/usr/lpp/mmfs/lib/mmsysmon` on each node that can runs the launcher (manager nodes). First check if a custom.json file is already installed in this directory. If this is the case then add this custom.json to the existing file. Ensure the the event_id tags are unique. It is recommended to copy the file to /var/mmfs/mmsysmon/custom.json and create a symlink to this file under /usr/lpp/mmfs/lib/mmsysmon/. 
 
 Once the custom.json file is copied the system monitor componented needs to be restarted
 
@@ -217,8 +220,8 @@ The check operation can be selectively plugged into this framework. As an exampl
 Invokation: 
 
     # check_spectrumarchive.sh file system name -e
-	file system name: 	the name of the file system for the backup
-	-e:			 		checks all components
+	file system name:  the name of the file system for the backup
+	-e:                checks all components
 
 The check_spectrumarchive script must run on nodes that have Spectrum Archive EE installed. 
 
