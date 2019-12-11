@@ -1,13 +1,13 @@
 
 # Introduction
 
-
 IBM Spectrum Scale™ is a software-defined scalable parallel file system storage providing a comprehensive set of storage services. Some of the differentiating storage services are the integrated backup function and storage tiering. These services typically run in the background according to pre-defined schedules. This project presents a flexible framework for automating storage services in IBM Spectrum Scale or other software. 
 
 The framework includes the following components, which are further detailed below:
 - The control components [launcher](launcher.sh) selects the appropriate cluster node initiating the storage service operation, starts the storage service if the node state is appropriate, manages logging, log-files and return codes and sends events in accordance to the result of the storage server. The control component is typically invoked by the scheduler and the storage services being started might be backup or storage tiering.
 - The backup component [backup](backup.sh) performs the backup using the mmbackup-command 
 - The storage tiering component [migrate](migrate.sh) performs pre-migration or migration using the mmapplypolicy-command
+- The check component performs checks of a certain component. It relies on a check script such as check_spectrumarchive. The check_spectrumarchive script can be obtained from this repo: [check_spectrumarchive.sh](https://github.com/nhaustein/check_spectrumarchive).  
 - The scheduler that invokes the control component. An example is cron.
 
 The framework requires that all cluster nodes with a manager role assigned must be able to run the automation components. These nodes must not necessarily be the nodes performing the storage service operation but must be able to launch it.
@@ -19,7 +19,6 @@ This project is under [MIT license](LICENSE).
 --------------------------------------------------------------------------------
 
 # Installation
-
 
 Perform the following steps for installation:
 - identify all manager nodes in your cluster (mmlscluster)
@@ -44,7 +43,7 @@ Note, the appropriate scripts from the selection below must be installed on all 
 This is the control component that is invoked by the scheduler. It checks if the node it is running on is the cluster manager. If this is the case it selects a node from a pre-defined node class for running the storage service and thereby prefers the local node if this is member of the node class or the node class is not defined. After selecting the node it checks if the node and file system state is appropriate, assigns and manages logfiles, starts the storage service (backup or migrate) through ssh. Upon completion of the storage sercie operation the launcher can also raise events with the Spectrum Scale system monitor. All output (STDOUT and STDERR) is written to a unique logfile.  
 
 
-Invokation and processing
+### Invokation and processing
 
     # launcher.sh operation file-sytem-name [second-argument]
 	operation:			is the storage service to be performed: backup, migrate, (check, test). 
@@ -59,7 +58,8 @@ The file system name can also be defined within the launcher.sh script. In this 
 The second-argument depends on the operation that is started by the launcher. 
 - For backup the second argument can be the name of an independent fileset. If the fileset name is given as second argument then the backup operation will be performed for this fileset. 
 - For storage tiering (migrate) the second argument can be the fully qualified path and file name of the policy file. Altenatively the policy file name can be defined within the migrate.sh script
-- For check the second argument can be the name of the component to be checked. 
+- For check the second argument can be the name of the component to be checked. For the check_spectrumarchive script the second argument should be set to "-e". 
+
 
 The following parameters can be adjusted within the launcher script:
 
@@ -67,11 +67,24 @@ The following parameters can be adjusted within the launcher script:
 | ----------|-------------|
 | def_fsName | default file system name, if this is set and $2 is empty this name is used. If $2 is given then this parameter is being ignored. Best practice is to not set this parameter. |
 | scriptPath | specifies the path where the automation scripts are located. It is recommended to put the scripts in the same directory on all nodes where it is installed (manager nodes) |
+| checkScript | specifies the fully qualified path and file name of the check script to run. The check script, like check_spectrumarchive.sh must be in the same directory on all nodes where this operation can run on |
 | nodeClass | defines the node class including the node names where the storage service is executed. For backup these are the nodes that have the backup client installed. For migration these are the node where the HSM component (like Spectrum Archive EE) is installed. Since these nodes must not be manager nodes the launcher script executes the storage service on a node in this node class. If the node class is not defined then the storage service is executed on the local node. This requires that all manager nodes have the backup client or the HSM component installed. |
 | logDir | specifies the directory where the log files are stored. The launcher creates one logfile for every run. The log file name is includes the operation (backup, migrate or check) and the time stamp (e.g. backup_YYYYMMDDhhmmss.log. It is good practice to store the log files in a subdirectory of /var/log. |
 | verKeep | specifies the number of log files to keep per operation. If the number of log files exceeds this number then the oldest logfile is compressed. |
 | verComp | specifies the number of compressed log files to keep per operation. If the number of compressed log files exceeds this number then the oldest compressed log file is deleted. | 
 
+
+### Examples for running storage services
+
+To run backup for file system `gpfs0` and for fileset `test01` run this launcher command:
+	# launcher.sh backup gpfs0 test01
+
+To run migration for file system `gpfs0` and with policy file `/hone/shared/mig_policy` run this launcher command
+	# launcher.sh migrate gpfs0 /hone/shared/mig_policy
+
+To run check for IBM Spectrum Archive EE run this launcher command (the file system name which is enabled for space management must be given with the command, in this example `gpfs0`):
+	# launcher.sh check gpfs0 -e
+	
 Upon completion of the storage service the launcher component can raise custom events. The custom events are defined in the file [custom.json](custom.json). This file must be copied to /usr/lpp/mmfs/lib/mmsysmon. If this file exists then the script will automatically raise events. If a custom.json exist for another reason and it is not desired to raise events the parameter sendEvent within the launcher script can be manually adjusted to a value of 0. 
 
 
@@ -83,15 +96,22 @@ Return codes:
 
 2 -  Operation completed with ERRORS
 
-The return code is iherited from the storage service. 
+The return code is iherited from the storage service. If custom events are enabled and configured the program will send one event in accordance with the return code of the storage service operation. 
 
 
-### [custom event](custom.json)
+### Enabling [custom events](custom.json)
 
 The launcher script can raise events in accordance to the return code of the storage service. The file [custom.json](custom.json) has three events defined:
-- cron_info: is raised when the operation completed with return 0 (Success)
-- cron_warning: is raised when the operation completed with return 1 (Warning)
-- cron_error: is raised when the operation completed with return 2 (Error)
+
+To integrate this utility with the IBM Spectrum Scale event monitoring framework custom events need to be defined and configured. The file [custom.json](custom.json) included predefined custom events. The following events are pre-defined:
+
+| Event name | Event Code | Event description |
+|------------|------------|-------------------|
+| cron_info | 888331 | is send if the operation ended successful (return code 0) |
+| cron_warning | 888332 | is send if the operation ended with WARNINGS (return code 1). |
+| checkee_error | 888343 | is send if the operatio ended with ERRORS (return code 2). |
+
+The script will automatically determine if the custom event have been installed and configured in  /usr/lpp/mmfs/lib/mmsysmon/custom.json. 
 
 Find below an example for an cron_error event:
 
@@ -118,9 +138,9 @@ More information [IBM Spectrum Scale Knowledge Center](https://www.ibm.com/suppo
 This is the backup component and performs the backup by executing the mmbackup command. It may optionally run the backup from a snapshot. It can also run the backup for a particular independent fileset if the fileset name is given with the call. 
 
 
-Invokation: 
+Invokation by the launcher:
 
-    # backup.sh file system name [fileset-name]
+    # launcher.sh backup file system name [fileset-name]
 	file system name: 	the name of the file system for the backup
 	fileset name: 		the name of the independent fileset (optional)
 
@@ -152,9 +172,9 @@ Return codes:
 This is the migration component and performs the migration by executing the mmapplypolicy command. The policy file name can be passed via the call of this script. Alternatively, the policy file name can be hard-coded within this scriipt. 
 
 
-Invokation: 
+Invokation by launcher:
 
-    # migrate.sh file-system-name [policy-file-name]
+    # launcher.sh migrate.sh file-system-name [policy-file-name]
 	file-system-name: 	the name of the file system for the backup
 	policy-file-name: 	the fully qualified path and file name of the policy file (optional)
 
@@ -188,4 +208,20 @@ Example policy that migrates files older than 30 days from system pool to IBM Sp
 The name of the policy file should be provide via the launcher script. This allows for more flexibility. It can also be defined as parameter in the migrate script, this would be a static definition. 
 
 
+--------------------------------------------------------------------------------
 
+## [check](https://github.com/nhaustein/check_spectrumarchive)
+
+The check operation can be selectively plugged into this framework. As an example I have included the execution of check_spectrumarchive that performs a check of all IBM Spectrum Archive EE components. The script [check_spectrumarchive.sh](https://github.com/nhaustein/check_spectrumarchive) has to be installed separately. The script constant `checkScript` defines the location of this script. 
+
+Invokation: 
+
+    # check_spectrumarchive.sh file system name -e
+	file system name: 	the name of the file system for the backup
+	-e:			 		checks all components
+
+The check_spectrumarchive script must run on nodes that have Spectrum Archive EE installed. 
+
+As with all other components it must be installed in the defined directory on all nodes.
+
+The check_spectrumarchive script can also be configured to send custom events to the Spectrum Scale monitoring framework. If events are enabled with check_spectrumarchive then both components (launcher and check_spectrumarchive) will send events. 
