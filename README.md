@@ -3,15 +3,19 @@
 
 IBM Spectrum Scale™ is a software-defined scalable parallel file system storage providing a comprehensive set of storage services. Some of the differentiating storage services are the integrated backup function and storage tiering. These services typically run in the background according to pre-defined schedules. This project presents a flexible framework for automating storage services in IBM Spectrum Scale or other software. 
 
-The framework includes the following components, which are further detailed below:
-- The control components [launcher](launcher.sh) selects the appropriate cluster node initiating the storage service operation, starts the storage service if the node state is appropriate, manages logging, log-files and return codes and sends events in accordance to the result of the storage server. The control component is typically invoked by the scheduler and the storage services being started might be backup or storage tiering.
+The framework includes the following components:
+
+**Control components:**
+- The control component [launcher](launcher.sh) selects the appropriate cluster node initiating the storage service operation, starts the storage service if the node state is appropriate, manages logging, log-files and return codes and sends events in accordance to the result of the storage server. The control component is typically invoked by the scheduler and the storage services being started might be backup or storage tiering.
+- The scheduler that invokes the control component. An example is cron. This component is not included in this framework
+
+**Storage services components:** 
 - The backup component [backup](backup.sh) performs the backup using the mmbackup-command 
 - The storage tiering component [migrate](migrate.sh) performs pre-migration or migration using the mmapplypolicy-command
 - The check component performs checks of a certain component. It relies on a check script such as check_spectrumarchive. The check_spectrumarchive script can be obtained from this repo: [check_spectrumarchive.sh](https://github.com/nhaustein/check_spectrumarchive).  
-- The scheduler that invokes the control component. An example is cron.
+- The bulkrecall component [bulkrecall](bulkrecall.sh) performs bulk recalls of files that are stored in a file list. The path and file name of the file list is configured within the bulkrecall program
 
-The framework requires that all cluster nodes with a manager role assigned must be able to run the automation components. These nodes must not necessarily be the nodes performing the storage service operation but must be able to launch it.
-
+All components are futher detailed below.
 
 ## Disclaimer and license
 This project is under [MIT license](LICENSE).
@@ -20,9 +24,24 @@ This project is under [MIT license](LICENSE).
 
 # Installation
 
+In general the launcher component is scheduled on all cluster nodes with manager and / or quorum role to run at the same time. The launcher component will launch the storage service only from the cluster manager node. On all nodes that are not cluster manager the launcher will exit after determining that this node is not the cluster manager. 
+
+The launcher can launch the storage service on a different cluster node using ssh. There is a configuration parameter (`nodeClass`) in the launcher script that allows to define the node class defining the set of node to run a storage service should run. The launcher will select one node from the this node class and prefers the node where it is running on. In other words if the active cluster manager is in the node class where the storage service should run then it will run on this node. 
+
+There are some storage service components that are specific to IBM Spectrum Archive EE, like check and bulkrecall. Since Spectrum Archive nodes may not be manager or quorum nodes in a cluster the launcher can also be configured to check if the node where it was started in the active control node. Only the active control node will launch the storage service. There is a configuration parameter (`singleton`) in the launcher script that allows to control if the launcher looks for the active cluster manager or the active control node. 
+
+Hence the components of this framework have to be installed on different nodes, including:
+- all manager and / or quorum nodes OR Spectrum Archive EE nodes. The launcher and the required storage service components have to be installed on these nodes. 
+- all nodes that are in the predefined node class to run the storage service. Only the required storage service components have to be installed on these nodes. 
+
+Note, only the components that are required have to be installed on these nodes. For example if you just want to automate check and bulkrecall you only have to install the launcher and the respective components. 
+
+The components have to be installed in the same path on all nodes. The path is configurable with a parameter (`scriptPath`) in the launcher script. 
+
 Perform the following steps for installation:
-- identify all manager nodes in your cluster (mmlscluster)
-- copy the files all manager nodes. Place them in the same directory on all nodes
+- identify the nodes where the components have to installed, see guidance above
+- on each node create a directory referenced by the parameter `scriptPath`
+- copy the required components (files) to the respective nodes into the appropriate directory
 - install the custom events file (more information below). 
 - adjust parameters in the launcher, backup and migrate script (more information below)
 - test the launcher and the operations
@@ -51,7 +70,8 @@ This is the control component that is invoked by the scheduler. It checks if the
 	second-argument: 	is a second argument passed to the storage service script (optional)
 		for backup: it can specify the fileset name when required
 		for migrate: it can specify the policy file name
-		for check: it can specify the component
+		for check: it can specify the component, such as -e for all checks
+		for bulkrecall: this argument is not required
 
 The file system name can also be defined within the launcher.sh script. In this case the file system name does not have to be given with call. If the file system name is given with the call then it takes precedence over the define file system name within the scrip. The file system name must either be given with the call or it must be defined within launcher script-
 
@@ -66,12 +86,13 @@ The following parameters can be adjusted within the launcher script:
 | Parameter | Description |
 | ----------|-------------|
 | def_fsName | default file system name, if this is set and $2 is empty this name is used. If $2 is given then this parameter is being ignored. Best practice is to not set this parameter. |
-| scriptPath | specifies the path where the automation scripts are located. It is recommended to put the scripts in the same directory on all nodes where it is installed (manager nodes) |
+| scriptPath | specifies the path where the automation scripts are located. The scripts must be stored in the same directory on all relevant nodes. The script path must not contain blanks. |
 | checkScript | specifies the fully qualified path and file name of the check script to run. The check script, like check_spectrumarchive.sh must be in the same directory on all nodes where this operation can run on |
 | nodeClass | defines the node class including the node names where the storage service is executed. For backup these are the nodes that have the backup client installed. For migration these are the node where the HSM component (like Spectrum Archive EE) is installed. Since these nodes must not be manager nodes the launcher script executes the storage service on a node in this node class. If the node class is not defined then the storage service is executed on the local node. This requires that all manager nodes have the backup client or the HSM component installed. |
 | logDir | specifies the directory where the log files are stored. The launcher creates one logfile for every run. The log file name is includes the operation (backup, migrate or check) and the time stamp (e.g. backup_YYYYMMDDhhmmss.log. It is good practice to store the log files in a subdirectory of /var/log. |
 | verKeep | specifies the number of log files to keep per operation. If the number of log files exceeds this number then the oldest logfile is compressed. |
 | verComp | specifies the number of compressed log files to keep per operation. If the number of compressed log files exceeds this number then the oldest compressed log file is deleted. | 
+| singleton | specifies the default check to be performed in order to decide whether the program continues to run or not. If set to `manager` it will check if the node is the cluster manager. If set to `archive` it checks if the node is active control node. This parameter can also be adjusted within the script where the operation code is determed to derive the command to run. |
 
 
 ### Examples for running storage services
@@ -88,6 +109,11 @@ To run check for IBM Spectrum Archive EE run this launcher command (the file sys
 
 	# launcher.sh check gpfs0 -e
 	
+To run bulkrecall for file system `gpfs0` on a IBM Spectrum Archive EE node run this launcher command.
+
+	# launcher.sh bulkrecall gpfs0 
+
+
 Upon completion of the storage service the launcher component can raise custom events. The custom events are defined in the file [custom.json](custom.json). This file must be copied to /usr/lpp/mmfs/lib/mmsysmon. If this file exists then the script will automatically raise events. If a custom.json exist for another reason and it is not desired to raise events the parameter sendEvent within the launcher script can be manually adjusted to a value of 0. 
 
 
@@ -172,6 +198,7 @@ Return codes:
 --------------------------------------------------------------------------------
 
 ## [migrate](migrate.sh)
+
 This is the migration component and performs the migration by executing the mmapplypolicy command. The policy file name can be passed via the call of this script. Alternatively, the policy file name can be hard-coded within this scriipt. 
 
 
@@ -228,3 +255,54 @@ The check_spectrumarchive script must run on nodes that have Spectrum Archive EE
 As with all other components it must be installed in the defined directory on all nodes.
 
 The check_spectrumarchive script can also be configured to send custom events to the Spectrum Scale monitoring framework. If events are enabled with check_spectrumarchive then both components (launcher and check_spectrumarchive) will send events. 
+
+
+Return codes:
+
+0 -  Operation completed SUCCESSFUL
+
+1 -  Operation completed with WARNING
+
+2 -  Operation completed with ERRORS
+
+
+
+--------------------------------------------------------------------------------
+
+## [bulkrecall](bulkrecall.sh)
+
+This is the bulkrecall component that recalls files with their name specified in a file list. This implementation is based on IBM Spectrum Archive EE (version 1.3.0.6 and above) and uses the Spectrum Archive command: `eeadm recall *filelist*`. The path and file name of the file list is defined with the parameter `fList` in the script. The file list contains fully qualilfied path and file names of files to be recalled using the bulk or tape optimized recall. There must be one path and file name per line. 
+
+Invokation by launcher:
+
+    # launcher.sh bulkrecall.sh file-system-name 
+	file-system-name: 	the name of the file system for the backup
+
+The launcher component typically invokes the bulkrecall components with the file system name. Priot to this the launcher components checks if the file system is online. 
+
+The following parameters can be adjusted within the migrate script:
+
+| Parameter | Description |
+| ----------|-------------|
+| hName | specifies the name of the host that creates the file list including the files to be recalled. This name is used to differentiate file list generated by different hosts. |
+| fListDir | specifies the path name where the file list will be stored |
+| fListName | specifies the file name of the file list. | 
+| minEntries | specifies the minimum number entries in file list required to start a bulk recall, should be at least 1 | 
+
+The current implementation builds the path and file name of the file list by: `$fListDir/$fListName.$hName`. This allows different file lists in the directory provided by different host ($hName)
+
+**Note:** 
+If the recall fails then the current processing file list is not removed from the directory `$fListDir`. The next run of bulkrecall will fail if this current processing file list still exists. This is done on purpose because we do not want to miss a recall. So we keep this list for later manual processing. In this case, perform a manual recall using this file list and if this runs with success then delete it manually. If the manual recall is not successfull then determine the root cause and fix the problem. 
+
+
+Return codes:
+
+0 - Successfull operation
+
+1 - Return code not used
+
+2 - Spectrum Archive EE is not running on this node
+
+3 - Recall failed
+
+4 - Processing file lists exist, a bulkrecall operation may be running or completed with error
