@@ -12,7 +12,7 @@ The framework includes the following components:
 **Storage services components:** 
 - The backup component [backup](backup.sh) performs the backup using the mmbackup-command 
 - The storage tiering component [migrate](migrate.sh) performs pre-migration or migration using the mmapplypolicy-command
-- The check component performs checks of a certain component. It relies on a check script such as check_spectrumarchive. The check_spectrumarchive script can be obtained from this repo: [check_spectrumarchive.sh](https://github.com/nhaustein/check_spectrumarchive).  
+- The check component performs checks of a certain component. It relies on a check script such as check_spectrumarchive. The check_spectrumarchive script can be obtained from this repo: [check_spectrumarchive](https://github.com/nhaustein/check_spectrumarchive).  
 - The bulkrecall component [bulkrecall](bulkRecall.sh) performs bulk recalls of files that are stored in a file list. The path and file name of the file list is configured within the bulkrecall program
 
 All components are futher detailed below.
@@ -44,8 +44,9 @@ Perform the following steps for installation:
 - copy the required components (files) to the respective nodes into the appropriate directory
 - install the custom events file (more information below). 
 - adjust parameters in the launcher, backup and migrate script (more information below)
-- test the launcher and the operations
+- test the launcher and the operations. Note that launcher does not write output the the console (STDOUT) but into a log file located in `/var/log/automation`
 - schedule the launcher using a scheduler, e.g. cron 
+
 
 
 Find below further guidance to adjust and configure this framework.
@@ -59,7 +60,7 @@ Note, the appropriate scripts from the selection below must be installed on all 
 
 
 ## [launcher](launcher.sh): 
-This is the control component that is invoked by the scheduler. It checks if the node it is running on is the cluster manager. If this is the case it selects a node from a pre-defined node class for running the storage service and thereby prefers the local node if this is member of the node class or the node class is not defined. After selecting the node it checks if the node and file system state is appropriate, assigns and manages logfiles, starts the storage service (backup or migrate) through ssh. Upon completion of the storage sercie operation the launcher can also raise events with the Spectrum Scale system monitor. All output (STDOUT and STDERR) is written to a unique logfile.  
+This is the control component that is invoked by the scheduler. It checks if the node it is running on is the cluster manager. If this is the case it selects a node from a pre-defined node class for running the storage service and thereby prefers the local node if this is member of the node class or the node class is not defined. After selecting the node it checks if the node and file system state is appropriate, assigns and manages logfiles, starts the storage service (backup or migrate) through ssh. Upon completion of the storage service operation the launcher can also raise events with the Spectrum Scale system monitor. All output (STDOUT and STDERR) is written to a unique logfile located in `/var/log/automation`.  
 
 
 ### Invokation and processing
@@ -95,6 +96,7 @@ The following parameters can be adjusted within the launcher script:
 | singleton | specifies the default check to be performed in order to decide whether the program continues to run or not. If set to `manager` it will check if the node is the cluster manager. If set to `archive` it checks if the node is active control node. This parameter can also be adjusted within the script where the operation code is determed to derive the command to run. |
 
 
+
 ### Examples for running storage services
 
 To run backup for file system `gpfs0` and for fileset `test01` run this launcher command:
@@ -113,8 +115,9 @@ To run bulkrecall for file system `gpfs0` on a IBM Spectrum Archive EE node run 
 
 	# launcher.sh bulkrecall gpfs0 
 
-
 Upon completion of the storage service the launcher component can raise custom events. The custom events are defined in the file [custom.json](custom.json). This file must be copied to /usr/lpp/mmfs/lib/mmsysmon. If this file exists then the script will automatically raise events. If a custom.json exist for another reason and it is not desired to raise events the parameter sendEvent within the launcher script can be manually adjusted to a value of 0. 
+
+Note again, the launcher component does not write output the the console (STDOUT) but into a log file located in `/var/log/automation`. All other components write to STDOUT which is redirected into the log file by launcher. 
 
 
 Return codes:
@@ -185,6 +188,7 @@ The following parameters can be adjusted within the backup script:
 | snapName | specifies the name of snapshot for mmbackup. If not set then mmbackup will not backup from snapshot. If the snapshot name is given then the backup script will check if a snapshot with this name exists. If this is the case it will exit with an error. If not then the backup script creates a snapshot. If the fileset name is specified then the backup script creates a snapshot for the fileset only. After the mmbackup run the snapshot is deleted by the backup script. |
 | backupOpts | specifies special parameters to be used with mmbackup command. Consider the following example as guidance: "-N nsdNodes -v --max-backup-count 4096 --max-backup-size 80M --backup-threads 2 --expire-threads 2" |
 
+All output is written to STDOUT which the launcher redirects to a log file named `var/log/automation/backup_timestamp.log`.
 
 Return codes:
 
@@ -220,6 +224,7 @@ The following parameters can be adjusted within the migrate script:
 | workDir | directory path name for temporary files created by the policy engine. This parameter is passed to the mmapplypolicy command via the -s parameter, the default (/tmp). |
 | mmapplyOpts | additional parameters for the mmapplypolicy command. Consider at least these parameters: "-N nsdNodes -m 1 -B 1000 --single-instance" | 
 
+All output is written to STDOUT which the launcher redirects to a log file named `var/log/automation/migrate_timestamp.log`.
 
 Return codes:
 
@@ -254,6 +259,8 @@ The check_spectrumarchive script must run on nodes that have Spectrum Archive EE
 As with all other components it must be installed in the defined directory on all nodes.
 
 The check_spectrumarchive script can also be configured to send custom events to the Spectrum Scale monitoring framework. If events are enabled with check_spectrumarchive then both components (launcher and check_spectrumarchive) will send events. 
+
+All output is written to STDOUT which the launcher redirects to a log file named `var/log/automation/check_timestamp.log`.
 
 
 Return codes:
@@ -292,6 +299,7 @@ The current implementation builds the path and file name of the file list by: `$
 **Note:** 
 If the recall fails then the current processing file list is not removed from the directory `$fListDir`. The next run of bulkrecall will fail if this current processing file list still exists. This is done on purpose because we do not want to miss a recall. So we keep this list for later manual processing. In this case, perform a manual recall using this file list and if this runs with success then delete it manually. If the manual recall is not successfull then determine the root cause and fix the problem. 
 
+All output is written to STDOUT which the launcher redirects to a log file named `var/log/automation/bulkrecall_timestamp.log`.
 
 Return codes:
 
