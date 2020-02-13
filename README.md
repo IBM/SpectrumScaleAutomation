@@ -13,7 +13,7 @@ The framework includes the following components:
 - The backup component [backup](backup.sh) performs the backup using the mmbackup-command 
 - The storage tiering component [migrate](migrate.sh) performs pre-migration or migration using the mmapplypolicy-command
 - The check component performs checks of a certain component. It relies on a check script such as check_spectrumarchive. The check_spectrumarchive script can be obtained from this repo: [check_spectrumarchive.sh](https://github.com/nhaustein/check_spectrumarchive).  
-- The bulkrecall component [bulkrecall](bulkrecall.sh) performs bulk recalls of files that are stored in a file list. The path and file name of the file list is configured within the bulkrecall program
+- The bulkrecall component [bulkrecall](bulkRecall.sh) performs bulk recalls of files that are stored in a file list. The path and file name of the file list is configured within the bulkrecall program
 
 All components are futher detailed below.
 
@@ -169,7 +169,7 @@ This is the backup component and performs the backup by executing the mmbackup c
 
 Invokation by the launcher:
 
-    # launcher.sh backup file system name [fileset-name]
+    # backup.sh file system name [fileset-name]
 	file system name: 	the name of the file system for the backup
 	fileset name: 		the name of the independent fileset (optional)
 
@@ -204,7 +204,7 @@ This is the migration component and performs the migration by executing the mmap
 
 Invokation by launcher:
 
-    # launcher.sh migrate.sh file-system-name [policy-file-name]
+    # migrate.sh file-system-name [policy-file-name]
 	file-system-name: 	the name of the file system for the backup
 	policy-file-name: 	the fully qualified path and file name of the policy file (optional)
 
@@ -246,8 +246,7 @@ The check operation can be selectively plugged into this framework. As an exampl
 
 Invokation: 
 
-    # check_spectrumarchive.sh file system name -e
-	file system name:  the name of the file system for the backup
+    # check_spectrumarchive.sh -e
 	-e:                checks all components
 
 The check_spectrumarchive script must run on nodes that have Spectrum Archive EE installed. 
@@ -269,14 +268,13 @@ Return codes:
 
 --------------------------------------------------------------------------------
 
-## [bulkrecall](bulkrecall.sh)
+## [bulkrecall](bulkRecall.sh)
 
 This is the bulkrecall component that recalls files with their name specified in a file list. This implementation is based on IBM Spectrum Archive EE (version 1.3.0.6 and above) and uses the Spectrum Archive command: `eeadm recall *filelist*`. The path and file name of the file list is defined with the parameter `fList` in the script. The file list contains fully qualilfied path and file names of files to be recalled using the bulk or tape optimized recall. There must be one path and file name per line. 
 
 Invokation by launcher:
 
-    # launcher.sh bulkrecall.sh file-system-name 
-	file-system-name: 	the name of the file system for the backup
+    # bulkRecall.sh 
 
 The launcher component typically invokes the bulkrecall components with the file system name. Priot to this the launcher components checks if the file system is online. 
 
