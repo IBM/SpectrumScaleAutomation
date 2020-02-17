@@ -7,7 +7,7 @@ The framework includes the following components:
 
 **Control components:**
 - The control component [launcher](launcher.sh) selects the appropriate cluster node initiating the storage service operation, starts the storage service if the node state is appropriate, manages logging, log-files and return codes and sends events in accordance to the result of the storage server. The control component is typically invoked by the scheduler and the storage services being started might be backup or storage tiering.
-- The scheduler that invokes the control component. An example is cron. This component is not included in this framework
+- The scheduler that invokes the control component. An example is the `cron` daemon. This component is not included in this framework
 
 **Storage services components:** 
 - The backup component [backup](backup.sh) performs the backup using the mmbackup-command 
@@ -312,3 +312,45 @@ Return codes:
 3 - Recall failed
 
 4 - Processing file lists exist, a bulkrecall operation may be running or completed with error
+
+
+--------------------------------------------------------------------------------
+
+## Configuring cron
+
+The `launcher.sh` with the appropriate operation is executed periodically. One way to schedule the periodic execution of the launcher is by using cron.
+
+As explained above the relevant components of this framework like `launcher.sh` and the storage services like `backup.sh`, `migrate.sh`, check and `bulkrecall.sh` must be installed on a subset of ndoes within the Spectrum Scale and Spectrum Archive cluster. The launcher is either scheduled to run at the same point of time on all manager and / or quorum nodes or on all Spectrum Archive nodes. To schedule the launcher with the appropriate storage operation the cron daemon can be used.
+
+In a normal environments the launcher and the storage services must run as root user because IBM Spectrum Scale and Spectrum Archive administration requires root privileges. Consequently the cron entries are setup for the root user. The cron entries can either be edited in `crontab` or they can be written a file and stored in `/etc/cron.d/`. Find below an example of the cron entries that start the launcher for migration every day at 18:00, bulkrecall at every bottom of the hour and check every day at 6:00 in the morning:
+
+	SHELL=/bin/bash
+	PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/lpp/mmfs/bin:/opt/ibm/ltfsee/bin/eeadm
+	MAILTO=root
+	# For details see man 4 crontabs
+
+	# Example of job definition:
+	# .---------------- minute (0 - 59)
+	# |  .------------- hour (0 - 23)
+	# |  |  .---------- day of month (1 - 31)
+	# |  |  |  .------- month (1 - 12) OR jan,feb,mar,apr ...
+	# |  |  |  |  .---- day of week (0 - 6) (Sunday=0 or 7) OR sun,mon,tue,wed,thu,fri,sat
+	# |  |  |  |  |
+	# *  *  *  *  * user-name  command to be executed
+
+	# run check_spectrumarchive.sh at 6 AM
+	 00 06  *  *  * root /root/silo/automation/launcher.sh check fs1 -e
+	# run migrate once a day at 18:00
+	 00  18  *  *  * root /root/silo/automation/launcher.sh migrate fs1 /root/silo/automation/migrate_policy.txt
+	# run bulkrecall at the bottom of the hour
+	 30  *  *  *  * root /root/silo/automation/launcher.sh bulkrecall fs1
+
+
+It is also possible to run the launcher and storage services by a non-root user. This requires the implementation of sudo-wrapper in IBM Spectrum Scale. The non-root user must be authorized to run the launcher and storage services scripts as root via /etc/sodoers. The launcher must be invoked in the following way:
+
+	# run check_spectrumarchive.sh at 6 AM
+	 00 06  *  *  * user /usr/bin/sudo /home/user/silo/automation/launcher.sh check fs1 -e
+
+
+
+
