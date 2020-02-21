@@ -19,8 +19,9 @@ RULE 'exclude' EXCLUDE WHERE (
                  OR PATH_NAME LIKE '%/.snapshots/%')
 
 /* Define hsm storage manager as an external pool */
-RULE EXTERNAL POOL 'hsm' EXEC '/var/mmfs/etc/mmpolicyExec-hsm.mig' OPTS '-v'
+RULE 'extpool' EXTERNAL POOL 'ltfs' EXEC '/opt/ibm/ltfsee/bin/eeadm' 		
+OPTS '-p pool1@lib1' SIZE 10485760							
 
 /* Rule migrate files older than 30 days */
-RULE 'Migrate_30' MIGRATE FROM POOL 'system' TO POOL 'hsm' 
+RULE 'Migrate_30' MIGRATE FROM POOL 'system' TO POOL 'ltfs' 
 WHERE (access_age_days > 30) AND (KB_ALLOCATED > 0)
