@@ -26,7 +26,7 @@
 # 
 # Name: launcher.sh
 #
-# Version 2.3
+# Version 2.5
 #
 # launcher script, checks if this is the cluster manager, performs some other checks, manages log files and launches the operation
 #
@@ -56,6 +56,9 @@
 # 02/05/19: added bulk recall
 #           add check if this is an active control node instead of manager using singleton variable set to archive
 # 02/12/20: fix problem with host name with and without dots, some streamlining (version 2.3)
+# 06/10/20: NYU: allow to run storage service on the node where launcher is started (singleton=none (version 2.4)
+# 06/15/20: NYU: when command has to run on local node then check the file system mount using df (version 2.4)
+# 08/14/20: include second argument in log file name, some streamlining (version 2.5)
 #******************************************************************************************************** 
 
 # Export the path including the linux and GPFS binaries in case this script is invoked from a schedule
@@ -78,6 +81,9 @@ checkScript="/root/silo/automation/check_spectrumarchive.sh"
 # if local node is not the cluster manager then it will not run on local node
 nodeClass=""
 
+# send events = 1 means we will send events if the custom.json file with the event codes exists
+sendEvent=0
+
 # log file directory for the automation scripts 
 logDir="/var/log/automation"
 
@@ -87,14 +93,17 @@ verKeep=3
 # log files for this type of operation to compress - compress the $verKeep + $verComp version
 verComp=3
 
-# set default singleton to control if the node is manager or active control node with Spectrum Archive
-singleton="manager"
+# this variable control which node is allowed to run the launcher
+# none - launcher runs on this node without any singleton checks
+# manager - check if this node is the cluster manager and if not exits
+# archive - check if this node is active control node and if not exits
+singleton=""
 
 
 # define constants
 # ----------------
 # version of the launcher program
-ver="2.3"
+ver="2.5"
 
 # path for the GPFS binaries
 gpfsPath="/usr/lpp/mmfs/bin"
@@ -116,9 +125,6 @@ eventErr=888333
 
 # custom event definition file
 customJson="/usr/lpp/mmfs/lib/mmsysmon/custom.json"
-
-# send events = 1 means we will send events if the custom.json file with the event codes exists
-sendEvent=0
 
 
 # define return codes
@@ -150,26 +156,62 @@ localNode=$($gpfsPath/mmlsnode -N localhost)
 errMsg=""
 errCode=""
 logF=""
+lfPrefix=""
+
 
 #********************************************** MAIN *********************************
+# if operation or file system name is not specified, then print an error to the console and exit
+if [[ -z $op || -z $fsName ]]; then
+  echo "LAUNCH: ERROR operation ($op) or file system ($fsName) has not been specified"
+  echo "Syntax: $0 operation file-system-name [second-argument]"
+  echo "        operation:        backup | migrate | premigrate | check | bulkrecall | test (required)"
+  echo "        file-system-name: name of the file system in scope for the operation (required)"
+  echo "        second-argument:  optional argument in accordance to the operation (optional):"
+  echo "          backup: second argument can specify the fileset"
+  echo "          migrate or premigrate: second argument can specify the policy file"
+  echo "          check: second argument can specify scope of the check."
+  echo "          bulkrecall: no second argument available".
+  echo "          test: second argument includes a string to be written in log file."
+  echo 
+  echo "Exiting program."
+  exit $rcErr
+fi
 
-# check operation and assign command
+
+# set logfile prefix in accordance to operation and file system name
+lfPrefix=$op"_"$fsName
+  
+# check operation and assign command and log file name
 # new operations can be added here
 case $op in
 "backup") 
   # runs DR-Backup
+  if [[ ! -z $secArg ]]; then 
+    lfPrefix=$lfPrefix"-"$secArg
+  fi
   cmd=$scriptPath"/backup.sh $fsName $secArg";;  
 
 "migrate") 
   # runs selective migration (scheduled)
+  if [[ ! -z $secArg ]]; then 
+    fName=$(basename "$secArg" | cut -d"." -f 1)
+    lfPrefix=$lfPrefix"-"$fName
+  fi
   cmd=$scriptPath"/migrate.sh $fsName $secArg";;
   
 "premigrate") 
   # runs selective pre-migration (scheduled)
+  if [[ ! -z $secArg ]]; then 
+    fName=$(basename "$secArg" | cut -d"." -f 1)
+    lfPrefix=$lfPrefix"-"$fName
+  fi
   cmd=$scriptPath"/premigrate.sh $fsName $secArg";;
 
 "check")
   # runs check
+  if [[ ! -z $secArg ]]; then 
+    lfPrefix=$lfPrefix$secArg
+  fi
   cmd=$checkScript" $secArg"
   # has to run on an EE node
   singleton="archive";;
@@ -182,15 +224,21 @@ case $op in
 
 "test")
   # just a simple test using ls
-  cmd="/usr/bin/ls";;
+   if [[ ! -z $secArg ]]; then 
+     text=$secArg
+   else 
+     text="default text"
+   fi
+  cmd="/usr/bin/echo $text";;
 
-*) errMsg=$errMsg"LAUNCH: ERROR: wrong operation code: $op\n \
+*) errMsg=$errMsg"LAUNCH: ERROR wrong operation code: $op\n \
    SYNTAX: $0 operation [file system name] [second-argumen]\n \
-   \t operation: backup | migrate | premigrate | check\n \
+   \t operation: backup | migrate | premigrate | check | bulkrecall | test\n \
    \t file system is the name of the file system in scope for the storage service \n \
-   \t second argument is an optional argument passed to the storage serice script \n" 
+   \t second argument is an optional argument passed to the storage service script \n" 
    errCode=$rcErr;;
 esac
+
 
 # create logfile dir if not exist
 if [[ ! -d $logDir ]];
@@ -198,19 +246,31 @@ then
   mkdir -p $logDir
 fi
 
-# assing logfile name
-# if operation is not given set it to Unknown
-if [[ -z $op ]];
-then 
-  op=UNKNOWN
-fi
-logF=$logDir"/"$op"_"$curDate".log"
-#### debugging, remove this
-# logF=$logDir"/"debug.log
+# build finale log file name
+logF=$logDir"/"$lfPrefix"_"$curDate".log"
 
 #present banner and initialize log file
 echo "$(date) LAUNCH: launcher version $ver started operation $op $fsName $secArg on node $localNode" > $logF
 echo >> $logF
+
+# delete and compress older  logfiles prior to logging anything
+echo "LAUNCH: cleaning up log files  $op" >> $logF
+lFiles=$(ls -r $logDir/$lfPrefix* | grep -v ".gz")
+i=1
+#echo "DEBUG: files=$lFiles"
+for f in $lFiles;
+do
+  if (( i > verKeep ));
+  then
+    if (( i > (verComp+verKeep) ));
+    then
+      rm -f $f >> $logF 2>&1
+    else
+      gzip $f >> $logF 2>&1
+    fi
+  fi
+  (( i=i+1 ))
+done
 
 # check if events are enabled and set sendEvent accordingly
 out=""
@@ -234,8 +294,6 @@ echo "LAUNCH: send Event is set to $sendEvent" >> $logF
 if [[ ! -z $errMsg ]];
 then
   echo -e $errMsg >> $logF
-  if [[ -z $fsName ]]; then fsName=UNKNOWN; fi
-  if [[ -z $op ]]; then op=UNKNOWN; fi
   if [[ -z $localNode ]]; then localNode=UNKNOWN; fi  
   if (( sendEvent == 1 )); 
   then 
@@ -285,6 +343,7 @@ then
 fi
 
 # check if the file system exists
+echo "DEBUG: running mmlsfs $fsName" >> $logF
 $gpfsPath/mmlsfs $fsName > /dev/null 2>&1
 rc=$?
 if (( rc > 0 ));
@@ -297,31 +356,15 @@ then
   exit $rcErr
 fi
 # now export the parameter $fsName which could be used by scripts being launched
-export fsName=$fsName
-
-# delete and compress older  logfiles prior to logging anything
-echo "LAUNCH: cleaning up log files  $op" >> $logF
-lFiles=$(ls -r $logDir/$op*)
-i=1
-#echo "DEBUG: files=$lFiles"
-for f in $lFiles;
-do
-  if (( i > verKeep ));
-  then
-    if (( i > (verComp+verKeep) ));
-    then
-      rm -f $f >> $logF 2>&1
-    else
-      gzip $f >> $logF 2>&1
-    fi
-  fi
-  (( i=i+1 ))
-done
+# export fsName=$fsName
 
 
-# if singleton is manager we check if we run on a manager node, if singleton is archive we check if we run on a archive node
-if [[ "$singleton" == "archive" ]]; 
-then
+# depending on the setting of the parameter singleton, check the node role:
+# none - launcher runs on this node without any singleton checks
+# manager - check if this node is the cluster manager and if not exits
+# archive - check if this node is active control node and if not exits
+case $singleton in
+"archive")
   if [[ ! -a $eeCmd  || ! -a $JQ_TOOL ]]; 
   then
     echo "LAUNCH: ERROR: required tool $eeCmd or $JQ_TOOL does not exist on this node. Cannot check if this node is active control node. Exiting." >> $logF
@@ -357,8 +400,8 @@ then
     echo "LAUNCH: INFO this node is not active control node, exiting." >> $logF
     echo "LAUNCH: DEBUG localNode=$localNode  activeNode=$hn" >> $logF
     exit $rcGood
-  fi
-else
+  fi;;
+"manager")
   #check if node is cluster manager
   echo "LAUNCH: checking if this node is cluster manager" >> $logF
   # have to cut of the dots from local node because mmlsmgr shows node name without dots: Cluster manager node: 192.168.100.2 (ltfs2)
@@ -366,13 +409,20 @@ else
   clusterMgr=$($gpfsPath/mmlsmgr -c | sed 's|.*(||' | sed 's|)||')
   if [ "$localNodeWithoutDot" != "$clusterMgr" ]; 
   then
-    echo "LAUNCH: INFO this node is not cluster manager, exiting." >> $logF
+    echo "LAUNCH: INFO this node ($localNode) is not cluster manager, exiting." >> $logF
     echo "LAUNCH: DEBUG localNode=$localNodeWithoutDot  clusterMgr=$clusterMgr" >> $logF
     exit $rcGood
-  fi
-fi
+  fi;;
+"none")
+  # do not check if the node has a particular role, just continue
+  echo "LAUNCH: INFO running launcher on the node where it is started ($localNode)." >> $logF;;
+*)
+  # singleton may not be set correctly
+  echo "LAUNCH: ERROR unknown parameter set for singleton ($singleton), exiting"
+  exit $rcErr;;
+esac
 
-#-------------------------------
+
 # determine the node to run this command based on node class and node and file system state
 echo "LAUNCH: INFO local node is: $localNode" >> $logF
 allNodes=""
@@ -407,35 +457,70 @@ fi
 # select the node to execute the command based on state 
 echo "LAUNCH: INFO The following nodes are checked to run the operation: $sortNodes" >> $logF
 execNode=""
-# determine file system state on node
+
+
+# determine GFPS and file system state on nodes that are subject for running the command
 # mmlsmount shows nodes without dots: mmlsmount::0:1:::ltfscache:ltfscache:ltfs.net:2:192.168.100.2:ltfs2:ltfs.net:RW:
 mNodes=$($gpfsPath/mmlsmount $fsName -Y | grep -v HEADER | grep -E ":RW:" | cut -d':' -f 12)
+
+# NYU debug
+echo "  LAUNCH NYU DEBUG: mNodes=$mNodes" >> $logF
+####### 
+
 for n in $sortNodes;
 do
   # determine node state
   # mmgetstate shows node with dots: mmgetstate::0:1:::ltfs1.ltfs.net:1:active:1*:2:2:quorum node:(undefined):
   state=$($gpfsPath/mmgetstate -N $n -Y | grep -v ":HEADER:" | cut -d':' -f 9)
+
   if [[ "$state" == "active" ]];
   then
-	for m in $mNodes;
-	do
-	  # $n comes from mmlsnodeclass where node name is with dot: ltfs2.ltfs.net
-	  # $m comes from mmlsmount where node name is without dots: ltfs2
-	  # have to remove the dot from $n
-	  n=$(echo "$n" | cut -d'.' -f1)
-	  if [[ "$m" == "$n" ]];
+    #----------------------------------------------------------------------
+    # FIX for NYU:
+    # checking the mount using mmlsmount is prone for errors. 
+    # Therefore check using df if only this node needs to be checked
+	# This is a quick fix, if there are file system mount points with similar 
+	# then this test could show wrong results
+    #----------------------------------------------------------------------
+    # if sortNodes=localNode then check the file system on the local node using df otherwise use mmlsmount
+    if [[ "$sortNodes" == "$localNode" ]]; 
+    then
+      echo "LAUNCH DEBUG: Only local node ($localNode) needs to be checked." >> $logF
+      mounted=""
+	  fsMountP=""
+      fsMountP=$(mmlsfs $fsName -T | grep "\-T"   | awk '{print $2}')
+      mounted=$(df | grep "$fsMountP")
+      if [[ ! -z $mounted ]];
+      then
+        echo "LAUNCH DEBUG: This node $localNode has file system $fsName mounted on $fsMountP" >> $logF
+        execNode=$localNode
+      else
+        echo "LAUNCH DEBUG: File system $fsName not mounted at $fsMountP on this node $localNode." >> $logF
+      fi
+    else
+      # if we have multiple candidate node to run the command, check the mount state using mmlsmount -Y
+	  for m in $mNodes;
+	  do
+	    # $n comes from mmlsnodeclass where node name is with dot: ltfs2.ltfs.net
+	    # $m comes from mmlsmount where node name is without dots: ltfs2
+	    # have to remove the dot from $n
+	    nNoDot=$(echo "$n" | cut -d'.' -f1) 
+  	    if [[ "$m" == "$nNoDot" ]];
+	    then
+		  execNode=$n
+        fi		
+	  done
+	  # if we found a node active with file system mounted then leave the loop
+	  if [[ ! -z "$execNode" ]];
 	  then
-		execNode=$m
-      fi		
-	done
-	# if we found a node active with file system mounted then leave the loop
-	if [[ ! -z "$execNode" ]];
-	then
-	  break
+	    echo "LAUNCH: DEBUG Found node to run the command on: $execNode" >> $logF
+	    break
+	  fi
 	fi
   fi
 done
 
+# if we do not have a node selected to run the command then exit
 if [[ -z "$execNode" ]];
 then
   echo "$(date) LAUNCH: ERROR no node is in appropriate state to run the job, exiting." >> $logF
@@ -448,8 +533,19 @@ fi
 
 #now run the command according to the operation code assigned above 
 echo "$(date) LAUNCH: INFO Running command $cmd on node $execNode" >> $logF
-ssh $execNode "$cmd" >> $logF 2>&1
-rc=$?
+#if localNode = execNode then run command without ssh
+echo "-----------------------------------------------------------------------------------------------" >> $logF
+echo >> $logF
+if [[ "$localNode" == "$execNode" ]]; then
+  echo "  LAUNCH: DEBUG execNode ($execNode) = localNode ($localNode), running command on local node." >> $logF
+  eval "$cmd" >> $logF 2>&1
+  rc=$?
+else
+  ssh $execNode "$cmd" >> $logF 2>&1
+  rc=$?
+fi
+echo "-----------------------------------------------------------------------------------------------" >> $logF
+echo >> $logF
 
 # evaluate the result of the command and send the event if this is enabled
 if (( rc == 0 ));
