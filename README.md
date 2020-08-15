@@ -66,7 +66,7 @@ This is the control component that is invoked by the scheduler. It checks if the
 ### Invokation and processing
 
     # launcher.sh operation file-sytem-name [second-argument]
-	operation:			is the storage service to be performed: backup, migrate, (check, test). 
+	operation:			is the storage service to be performed: backup, migrate, check, bulkrecall, test 
 	file-system-name: 	is the name of the file system which is in scope of the storage service
 	second-argument: 	is a second argument passed to the storage service script (optional)
 		for backup: it can specify the fileset name when required
@@ -78,7 +78,7 @@ The file system name can also be defined within the launcher.sh script. In this 
 
 The second-argument depends on the operation that is started by the launcher. 
 - For backup the second argument can be the name of an independent fileset. If the fileset name is given as second argument then the backup operation will be performed for this fileset. 
-- For storage tiering (migrate) the second argument can be the fully qualified path and file name of the policy file. Altenatively the policy file name can be defined within the migrate.sh script
+- For storage tiering (migrate) the second argument can be the fully qualified path and file name of the policy file. If the policy file name is specified as second parameter is must not include blanks in the base file name. Altenatively the policy file name can be defined within the migrate.sh script.
 - For check the second argument can be the name of the component to be checked. For the check_spectrumarchive script the second argument should be set to "-e". 
 
 
@@ -93,7 +93,23 @@ The following parameters can be adjusted within the launcher script:
 | logDir | specifies the directory where the log files are stored. The launcher creates one logfile for every run. The log file name is includes the operation (backup, migrate or check) and the time stamp (e.g. backup_YYYYMMDDhhmmss.log. It is good practice to store the log files in a subdirectory of /var/log. |
 | verKeep | specifies the number of log files to keep per operation. If the number of log files exceeds this number then the oldest logfile is compressed. |
 | verComp | specifies the number of compressed log files to keep per operation. If the number of compressed log files exceeds this number then the oldest compressed log file is deleted. | 
-| singleton | specifies the default check to be performed in order to decide whether the program continues to run or not. If set to `manager` it will check if the node is the cluster manager. If set to `archive` it checks if the node is active control node. This parameter can also be adjusted within the script where the operation code is determed to derive the command to run. |
+| singleton | specifies the default check to be performed in order to decide whether the program continues to run or not. If set to `manager` it will check if the node is the cluster manager. If set to `archive` it checks if the node is active control node. If set to `none` it will not check any role of the node and the launcher will continue to run on the node where it is executed. This parameter can also be adjusted within the script where the operation code is determed to derive the command to run. |
+
+
+### Logging
+
+For each run the script `launcher.sh` creates a unique log file. The log files are stored in the path specified by the script parameter `logDir`. The naming of the log file depends on the operation and the additional arguments provided. The table below explains the log file naming:
+
+
+| Operation | Log file name | Note |
+| ----------| --------------| -----|
+| Backup | backup_fsname-fsetname_date.log | Token `fsname` is the file system name given for the backup. If the fileset name is given as second paramter for the backup operation it is included in the log file name as token `fsetname`. |
+| Migration | migrate_fsname-policyfile_date.log | Token `fsname` is the file system name given for the migration operation. If the policy file name is given as second parameter it is included in the log file name as token `policyfile` (the token `policyfile` is the base name of the policy file name without dot). |
+| Check | check_fsname-option_date.log | Token `fsname` is the file system name given for the check operation. If the check option is given as second paramter it is included in the log file name as token `option`. |
+| Bulkrecall | bulkrecall_fsname_date.log | Token `fsname` is the file system name given for the migration. |
+
+
+The script `launcher.sh` manages log files based on the number of logs stored for a particular operation. The number of log file kept uncompressed is specified with parameter `verKeep`. The number of log files kept in a compressed manner (gzip) is specified by paramter `verComp`. Additional (older compressed) log files are deleted automatically. 
 
 
 
@@ -103,17 +119,29 @@ To run backup for file system `gpfs0` and for fileset `test01` run this launcher
 
 	# launcher.sh backup gpfs0 test01
 
-To run migration for file system `gpfs0` and with policy file `/hone/shared/mig_policy` run this launcher command
+The log file name will be backup_gpfs0-test01_date.log. 
 
-	# launcher.sh migrate gpfs0 /hone/shared/mig_policy
+
+To run migration for file system `gpfs0` and with policy file `/hone/shared/mig_policy.txt` run this launcher command
+
+	# launcher.sh migrate gpfs0 /hone/shared/mig_policy.txt
+
+The log file name will be migrate_gpfs0-mig_policy_date.log. 
+
 
 To run check for IBM Spectrum Archive EE run this launcher command (the file system name which is enabled for space management must be given with the command, in this example `gpfs0`):
 
 	# launcher.sh check gpfs0 -e
 	
+The log file name will be check_gpfs0-e_date.log. 
+
+
 To run bulkrecall for file system `gpfs0` on a IBM Spectrum Archive EE node run this launcher command.
 
 	# launcher.sh bulkrecall gpfs0 
+
+The log file name will be bulkrecall_gpfs0_date.log. 
+
 
 Upon completion of the storage service the launcher component can raise custom events. The custom events are defined in the file [custom.json](custom.json). This file must be copied to /usr/lpp/mmfs/lib/mmsysmon. If this file exists then the script will automatically raise events. If a custom.json exist for another reason and it is not desired to raise events the parameter sendEvent within the launcher script can be manually adjusted to a value of 0. 
 
@@ -210,7 +238,7 @@ Invokation by launcher:
 
     # migrate.sh file-system-name [policy-file-name]
 	file-system-name: 	the name of the file system for the backup
-	policy-file-name: 	the fully qualified path and file name of the policy file (optional)
+	policy-file-name: 	the fully qualified path and file name of the policy file. The policy file name (base name) must not include blanks (optional)
 
 The launcher component typically invokes the migrate components with the file system name and optionally with the polciy file  name. Priot to this the launcher components checks if the file system is online. 
 
