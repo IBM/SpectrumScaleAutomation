@@ -108,6 +108,7 @@ For each run the script `launcher.sh` creates a unique log file. The log files a
 | Check | check_fsname-option_date.log | Token `fsname` is the file system name given for the check operation. If the check option is given as second paramter it is included in the log file name as token `option`. |
 | Bulkrecall | bulkrecall_fsname_date.log | Token `fsname` is the file system name given for the migration. |
 
+The token `date` in the log file name is the current time stamp in format: YYYYMMDDhhmmss.
 
 The script `launcher.sh` manages log files based on the number of logs stored for a particular operation. The number of log file kept uncompressed is specified with parameter `verKeep`. The number of log files kept in a compressed manner (gzip) is specified by paramter `verComp`. Additional (older compressed) log files are deleted automatically. 
 
@@ -119,28 +120,28 @@ To run backup for file system `gpfs0` and for fileset `test01` run this launcher
 
 	# launcher.sh backup gpfs0 test01
 
-The log file name will be backup_gpfs0-test01_date.log. 
+The log file name will be `backup_gpfs0-test01_date.log`. 
 
 
 To run migration for file system `gpfs0` and with policy file `/hone/shared/mig_policy.txt` run this launcher command
 
 	# launcher.sh migrate gpfs0 /hone/shared/mig_policy.txt
 
-The log file name will be migrate_gpfs0-mig_policy_date.log. 
+The log file name will be `migrate_gpfs0-mig_policy_date.log`. 
 
 
 To run check for IBM Spectrum Archive EE run this launcher command (the file system name which is enabled for space management must be given with the command, in this example `gpfs0`):
 
 	# launcher.sh check gpfs0 -e
 	
-The log file name will be check_gpfs0-e_date.log. 
+The log file name will be `check_gpfs0-e_date.log`. 
 
 
 To run bulkrecall for file system `gpfs0` on a IBM Spectrum Archive EE node run this launcher command.
 
 	# launcher.sh bulkrecall gpfs0 
 
-The log file name will be bulkrecall_gpfs0_date.log. 
+The log file name will be `bulkrecall_gpfs0_date.log`. 
 
 
 Upon completion of the storage service the launcher component can raise custom events. The custom events are defined in the file [custom.json](custom.json). This file must be copied to /usr/lpp/mmfs/lib/mmsysmon. If this file exists then the script will automatically raise events. If a custom.json exist for another reason and it is not desired to raise events the parameter sendEvent within the launcher script can be manually adjusted to a value of 0. 
