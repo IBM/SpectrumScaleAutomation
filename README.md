@@ -205,9 +205,13 @@ Invokation by the launcher:
 	file system name: 	the name of the file system for the backup
 	fileset name: 		the name of the independent fileset (optional)
 
-The launcher component typically invokes the backup components with the file system name and optionally with the fileset name. Priot to this the launcher components checks if the file system is online. 
+The launcher component typically invokes the backup components with the file system name and optionally with the fileset name. Prior to this the launcher components checks if the file system is online and invokes the backup component with the file system name to be backed up and optionally with the name of the fileset. 
 
-If a fileset name is given then the backup component checks if the fileset exists and is linked. If this is the case the optional snapshot and backup operation is performed for this fileset. 
+If a fileset name is given then the backup component checks if the fileset exists and is linked. 
+
+If the parameter `$snapName` is set then the backup component creates a snapshot and performs the subsequent backup operation from the snapshot. For fileset level backups the snapshot name is `$snapName_$fsetName`. For file system level backups the snapshot name is `$snapName`. 
+
+After the backup operation has finished and was performed from a snapshot then the snapshot is deleted. The backup component returns the status of the mmbackup operation.  
 
 The following parameters can be adjusted within the backup script:
 
@@ -223,9 +227,9 @@ Return codes:
 
 0 -  Operation completed SUCCESSFUL
 
-1 -  Operation completed with WARNING
+1 -  Operation completed with WARNING (mmbackup return code = 1)
 
-2 -  Operation completed with ERRORS
+2 -  Operation completed with ERRORS (mmbackup return code > 1)
 
 
 --------------------------------------------------------------------------------
