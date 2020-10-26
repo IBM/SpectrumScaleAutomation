@@ -42,7 +42,7 @@
 #
 # Author: Nils Haustein
 #
-# Version: 1.2
+# Version: 1.3
 #
 # Change History
 # --------------
@@ -53,6 +53,7 @@
 # 06/10/20: add config parameter $weekday defining when to run mmbackup -q (version 1.1)
 # 06/11/20: NYU: for fileset level backup check if .mmbackupShadow* exists in the path and if not then run full backup
 # 08/14/20: streamlined return message, added hint to rebuild shadow DB if mmbackup rc > 1 (version 1.2)
+# 10/26/20: NYU: if fileset level backup from snapshot use a unique snapshot name ($snapName_$fsetName (version 1.3)
 ##################################################################################
 
 #
@@ -66,7 +67,7 @@ tsmServ=""
 backupOpts="-N g8_node3 -v --max-backup-count 4096 --max-backup-size 80M --backup-threads 2 --expire-threads 2"
 
 # name of global snapshot for mmbackup, if this is not set then mmbackup will not backup from snapshot
-snapName=""
+snapName="snap"
 
 # specify the day of the week when to run mmbackup -q
 # 0=skip, 1=monday, 2=tuesday, ... 7=sunday
@@ -75,7 +76,7 @@ weekDay=0
 # Constants
 # ----------
 # version of the program
-ver=1.2
+ver=1.3
 
 # specifies the path for the GPFS binaries
 gpfsPath="/usr/lpp/mmfs/bin"
@@ -121,9 +122,10 @@ fi
 # check if snapshot is required and if so check if one exist already and if so exit, otherwise, create snapshot
 if [[ ! -z $snapName ]];
 then 
-  # assign special options if this is a file set level snapshot
+  # assign the snapshot name postfix, if on fileset level and assign special options if this is a file set level snapshot
   if [[ ! -z $fsetName ]];
   then 
+    snapName=$snapName"_"$fsetName
     snapOpts="-j $fsetName"
   else
     snapOpts=""
@@ -245,7 +247,7 @@ then
   exit $rcErr
 elif (( mmbackup_rc == 1 || rc > 0 ));
 then 
-  echo "$(date) BACKUP: WARNING running backup for $fsDev. "
+  echo "$(date) BACKUP: WARNING backup for $fsDev ended with WARNING. "
   if (( mmbackup_rc == 1 )); then
     echo "BACKUP HINT: investigate the mmbackup log file and the SP server log. Run backup in debug mode (mmbackup option -L)."
   elif (( rc > 0 )); then
