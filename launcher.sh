@@ -26,7 +26,7 @@
 # 
 # Name: launcher.sh
 #
-# Version 2.5
+# Version 2.6
 #
 # launcher script, checks if this is the cluster manager, performs some other checks, manages log files and launches the operation
 #
@@ -59,6 +59,7 @@
 # 06/10/20: NYU: allow to run storage service on the node where launcher is started (singleton=none (version 2.4)
 # 06/15/20: NYU: when command has to run on local node then check the file system mount using df (version 2.4)
 # 08/14/20: include second argument in log file name, some streamlining (version 2.5)
+# 12/10/20: NYU: fix for checking the mount point of the file system: exact match (version 2.6)
 #******************************************************************************************************** 
 
 # Export the path including the linux and GPFS binaries in case this script is invoked from a schedule
@@ -97,13 +98,14 @@ verComp=3
 # none - launcher runs on this node without any singleton checks
 # manager - check if this node is the cluster manager and if not exits
 # archive - check if this node is active control node and if not exits
+# "" (blank) - defaults to manager
 singleton=""
 
 
 # define constants
 # ----------------
 # version of the launcher program
-ver="2.5"
+ver="2.6"
 
 # path for the GPFS binaries
 gpfsPath="/usr/lpp/mmfs/bin"
@@ -125,7 +127,6 @@ eventErr=888333
 
 # custom event definition file
 customJson="/usr/lpp/mmfs/lib/mmsysmon/custom.json"
-
 
 # define return codes
 # ------------------
@@ -302,6 +303,8 @@ then
   exit $errCode
 fi
 
+echo "LAUNCH: INFO singleton set to: $singleton" >> $logF
+
 #check that localNode initialized above is not empty
 if [[ -z $localNode ]];
 then
@@ -363,6 +366,7 @@ fi
 # none - launcher runs on this node without any singleton checks
 # manager - check if this node is the cluster manager and if not exits
 # archive - check if this node is active control node and if not exits
+# "" (blank) - defaults to manager
 case $singleton in
 "archive")
   if [[ ! -a $eeCmd  || ! -a $JQ_TOOL ]]; 
@@ -401,7 +405,7 @@ case $singleton in
     echo "LAUNCH: DEBUG localNode=$localNode  activeNode=$hn" >> $logF
     exit $rcGood
   fi;;
-"manager")
+"manager" | "")
   #check if node is cluster manager
   echo "LAUNCH: checking if this node is cluster manager" >> $logF
   # have to cut of the dots from local node because mmlsmgr shows node name without dots: Cluster manager node: 192.168.100.2 (ltfs2)
@@ -418,10 +422,9 @@ case $singleton in
   echo "LAUNCH: INFO running launcher on the node where it is started ($localNode)." >> $logF;;
 *)
   # singleton may not be set correctly
-  echo "LAUNCH: ERROR unknown parameter set for singleton ($singleton), exiting"
+  echo "LAUNCH: ERROR unknown parameter set for singleton ($singleton), exiting" >> $logF
   exit $rcErr;;
 esac
-
 
 # determine the node to run this command based on node class and node and file system state
 echo "LAUNCH: INFO local node is: $localNode" >> $logF
@@ -464,7 +467,7 @@ execNode=""
 mNodes=$($gpfsPath/mmlsmount $fsName -Y | grep -v HEADER | grep -E ":RW:" | cut -d':' -f 12)
 
 # NYU debug
-echo "  LAUNCH NYU DEBUG: mNodes=$mNodes" >> $logF
+echo   LAUNCH NYU DEBUG: nodes that have the file system mounted: $mNodes >> $logF
 ####### 
 
 for n in $sortNodes;
@@ -489,8 +492,8 @@ do
       mounted=""
 	  fsMountP=""
       fsMountP=$(mmlsfs $fsName -T | grep "\-T"   | awk '{print $2}')
-      mounted=$(df | grep "$fsMountP")
-      if [[ ! -z $mounted ]];
+      mounted=$(df | awk '{print $6}' | grep -w "$fsMountP")
+      if [[ "$mounted" == "$fsMountP" ]];
       then
         echo "LAUNCH DEBUG: This node $localNode has file system $fsName mounted on $fsMountP" >> $logF
         execNode=$localNode
