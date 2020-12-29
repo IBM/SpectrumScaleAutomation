@@ -14,6 +14,7 @@ The framework includes the following components:
 - The storage tiering component [migrate](migrate.sh) performs pre-migration or migration using the mmapplypolicy-command
 - The check component performs checks of a certain component. It relies on a check script such as check_spectrumarchive. The check_spectrumarchive script can be obtained from this repo: [check_spectrumarchive](https://github.com/nhaustein/check_spectrumarchive).  
 - The bulkrecall component [bulkrecall](bulkRecall.sh) performs bulk recalls of files that are stored in a file list. The path and file name of the file list is configured within the bulkrecall program
+- The reclaim component [reclaim](eereclaim.sh) performs tape reclamation with IBM Spectrum Archive EE. The options for the reclaim command can be provided with the launcher script. 
 
 All components are futher detailed below.
 
@@ -66,13 +67,14 @@ This is the control component that is invoked by the scheduler. It checks if the
 ### Invokation and processing
 
     # launcher.sh operation file-sytem-name [second-argument]
-	operation:			is the storage service to be performed: backup, migrate, check, bulkrecall, test 
+	operation:			is the storage service to be performed: backup, migrate, check, bulkrecall, reclaim, test 
 	file-system-name: 	is the name of the file system which is in scope of the storage service
 	second-argument: 	is a second argument passed to the storage service script (optional)
-		for backup: it can specify the fileset name when required
-		for migrate: it can specify the policy file name
-		for check: it can specify the component, such as -e for all checks
+		for backup: 	it can specify the fileset name when required
+		for migrate: 	it can specify the policy file name
+		for check: 		it can specify the component, such as -e for all checks
 		for bulkrecall: this argument is not required
+		for reclaim: 	it can specify the options for the reclaim command. 
 
 The file system name can also be defined within the launcher.sh script. In this case the file system name does not have to be given with call. If the file system name is given with the call then it takes precedence over the define file system name within the scrip. The file system name must either be given with the call or it must be defined within launcher script-
 
@@ -142,6 +144,18 @@ To run bulkrecall for file system `gpfs0` on a IBM Spectrum Archive EE node run 
 	# launcher.sh bulkrecall gpfs0 
 
 The log file name will be `bulkrecall_gpfs0_date.log`. 
+
+
+To run reclamation for a Spectrum Archive EE pool the options for the reclaim command must be specified after the file system (e.g. `gpfs0`). Use the following command: 
+
+	# launcher.sh reclaim gpfs0 -p poolname -l lib-name -U min-used-percentage -G min-reclaimable-percentage -n num-tapes
+
+    For example, you want to reclaim tapes in a given pool (parameter `-p poolname -l libname`) that have more than 80 % used capacity (parameter `-U 80`) and more than 50 % reclaimable space (paramter `-G 50`). You can also specify to only reclaim 2 tapes with one reclaim process (parameter `-n 2`).
+	
+	# launcher.sh reclaim -p poolname -l lib-name -U 80 -G 50 -n 2
+
+The log file name will be `reclaim_gpfs0_date.log`. 
+
 
 
 Upon completion of the storage service the launcher component can raise custom events. The custom events are defined in the file [custom.json](custom.json). This file must be copied to /usr/lpp/mmfs/lib/mmsysmon. If this file exists then the script will automatically raise events. If a custom.json exist for another reason and it is not desired to raise events the parameter sendEvent within the launcher script can be manually adjusted to a value of 0. 
@@ -316,7 +330,7 @@ Invokation by launcher:
 
     # bulkRecall.sh 
 
-The launcher component typically invokes the bulkrecall components with the file system name. Priot to this the launcher components checks if the file system is online. 
+The launcher component typically invokes the bulkrecall components with the file system name. Prior to this the launcher components checks if the file system is online. 
 
 The following parameters can be adjusted within the migrate script:
 
@@ -345,6 +359,40 @@ Return codes:
 3 - Recall failed
 
 4 - Processing file lists exist, a bulkrecall operation may be running or completed with error
+
+
+--------------------------------------------------------------------------------
+
+## [reclamation](eereclaim.sh)
+
+This is the tape reclaim services that reclaims tapes in a pool managed by IBM Spectrum Archive EE. This implementation is based on IBM Spectrum Archive EE (version 1.3.0.7 and above). The pool name, the library name and the further reclaim options can be given with the launcher component. Optionally, the reclaim options can be defined within this script. 
+
+Invokation by launcher:
+
+	# eereclaim.sh gpfs0 [eeadm tape reclaim options]
+	
+	The reclaim options are in accordance with the `eeadm tape reclaim` command [More Information]( https://www.ibm.com/support/knowledgecenter/en/ST9MBR_1.3.1/ee_eeadm_tape_reclaim.html). A typical scenario may be to reclaim tapes in a given pool (parameter `-p poolname -l libname`) that have more than 80 % used capacity (parameter `-U 80`) and more than 50 % reclaimable space (paramter `-G 50`). You can also specify to only reclaim 2 tapes with one reclaim process (parameter `-n 2`). When sufficient tape drives are available you can specify the number of parallel reclaim threads (parameter `-m 2`), this however requires Spectrum Archive EE version 1.3.1. Be aware that each reclaim thread needs at least two tape drives to be availeble. With this example the invokation of the launcher looks like this: 
+	
+	# launcher.sh reclaim -p poolname -l lib-name -U 80 -G 50 -n 2
+
+
+The launcher component typically invokes the reclaim components with the file system name which is not used in the reclaim script. The launcher components checks if the file system is online prior to invoking the reclaim component. 
+
+The following parameters can be adjusted within the reclaim script:
+
+| Parameter | Description |
+| ----------|-------------|
+| reclaimOpts | defines the command parameters and options for the reclaim command in a single string. If there are reclaim options given with the `eereclaim.sh`invokation than these paremeters and options defined in the script are ignored. For example, a valid options string is: `-p poolname -l libname -U 70 -G 80`. This reclaims all tapes in the pool that are have a used percentage of 70% and a minimum reclaimable percentage of 80%. Further reclaim options can be used. |
+
+All output is written to STDOUT which the launcher redirects to a log file named `var/log/automation/reclaim_timestamp.log`.
+
+Return codes:
+
+0 - Successfull operation
+
+1 - reclaim command returned 1
+
+2 - reclaim command failed
 
 
 --------------------------------------------------------------------------------
