@@ -150,7 +150,9 @@ To run reclamation for a Spectrum Archive EE pool the options for the reclaim co
 
 	# launcher.sh reclaim gpfs0 -p poolname -l lib-name -U min-used-percentage -G min-reclaimable-percentage -n num-tapes
 
-    For example, you want to reclaim tapes in a given pool (parameter `-p poolname -l libname`) that have more than 80 % used capacity (parameter `-U 80`) and more than 50 % reclaimable space (paramter `-G 50`). You can also specify to only reclaim 2 tapes with one reclaim process (parameter `-n 2`).
+
+For example, you want to reclaim tapes in a given pool (parameter `-p poolname -l libname`) that have more than 80 % used capacity (parameter `-U 80`) and more than 50 % reclaimable space (paramter `-G 50`). You can also specify to only reclaim 2 tapes with one reclaim process (parameter `-n 2`).
+	
 	
 	# launcher.sh reclaim -p poolname -l lib-name -U 80 -G 50 -n 2
 
@@ -363,7 +365,7 @@ Return codes:
 
 --------------------------------------------------------------------------------
 
-## [reclamation](eereclaim.sh)
+## [reclaim](eereclaim.sh)
 
 This is the tape reclaim services that reclaims tapes in a pool managed by IBM Spectrum Archive EE. This implementation is based on IBM Spectrum Archive EE (version 1.3.0.7 and above). The pool name, the library name and the further reclaim options can be given with the launcher component. Optionally, the reclaim options can be defined within this script. 
 
@@ -371,7 +373,9 @@ Invokation by launcher:
 
 	# eereclaim.sh gpfs0 [eeadm tape reclaim options]
 	
-	The reclaim options are in accordance with the `eeadm tape reclaim` command [More Information]( https://www.ibm.com/support/knowledgecenter/en/ST9MBR_1.3.1/ee_eeadm_tape_reclaim.html). A typical scenario may be to reclaim tapes in a given pool (parameter `-p poolname -l libname`) that have more than 80 % used capacity (parameter `-U 80`) and more than 50 % reclaimable space (paramter `-G 50`). You can also specify to only reclaim 2 tapes with one reclaim process (parameter `-n 2`). When sufficient tape drives are available you can specify the number of parallel reclaim threads (parameter `-m 2`), this however requires Spectrum Archive EE version 1.3.1. Be aware that each reclaim thread needs at least two tape drives to be availeble. With this example the invokation of the launcher looks like this: 
+	
+The reclaim options are in accordance with the `eeadm tape reclaim` command [More Information]( https://www.ibm.com/support/knowledgecenter/en/ST9MBR_1.3.1/ee_eeadm_tape_reclaim.html). A typical scenario may be to reclaim tapes in a given pool (parameter `-p poolname -l libname`) that have more than 80 % used capacity (parameter `-U 80`) and more than 50 % reclaimable space (paramter `-G 50`). You can also specify to only reclaim 2 tapes with one reclaim process (parameter `-n 2`). When sufficient tape drives are available you can specify the number of parallel reclaim threads (parameter `-m 2`), this however requires Spectrum Archive EE version 1.3.1. Be aware that each reclaim thread needs at least two tape drives to be availeble. With this example the invokation of the launcher looks like this: 
+
 	
 	# launcher.sh reclaim -p poolname -l lib-name -U 80 -G 50 -n 2
 
