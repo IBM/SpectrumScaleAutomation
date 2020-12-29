@@ -3,7 +3,7 @@
 ################################################################################
 # The MIT License (MIT)                                                        #
 #                                                                              #
-# Copyright (c) 2019 Nils Haustein                             				   #
+# Copyright (c) 2020 Nils Haustein                             				   #
 #                                                                              #
 # Permission is hereby granted, free of charge, to any person obtaining a copy #
 # of this software and associated documentation files (the "Software"), to deal#
@@ -26,7 +26,7 @@
 # 
 # Name: launcher.sh
 #
-# Version 2.6
+# Version 2.7
 #
 # launcher script, checks if this is the cluster manager, performs some other checks, manages log files and launches the operation
 #
@@ -60,6 +60,7 @@
 # 06/15/20: NYU: when command has to run on local node then check the file system mount using df (version 2.4)
 # 08/14/20: include second argument in log file name, some streamlining (version 2.5)
 # 12/10/20: NYU: fix for checking the mount point of the file system: exact match (version 2.6)
+# 12/12/29: add Spectrum Archive reclaim, some streamlining (version 2.7)
 #******************************************************************************************************** 
 
 # Export the path including the linux and GPFS binaries in case this script is invoked from a schedule
@@ -105,7 +106,7 @@ singleton=""
 # define constants
 # ----------------
 # version of the launcher program
-ver="2.6"
+ver="2.7"
 
 # path for the GPFS binaries
 gpfsPath="/usr/lpp/mmfs/bin"
@@ -144,11 +145,14 @@ op="$1"
 # file system name is $2
 fsName="$2"
 
-# optional argument $3 depends on operation
+# all further arguments are stored in secArg and depend on the operation
 #  for backup: it can specify the fileset name
 #  for migrate: it can specify the policy file name
 #  for check: it can specify the component
-secArg="$3"
+#  for reclaim: it specifies the eeadm tape reclaim options
+shift 2
+secArg=$*
+#secArg="$3"
 
 # other global variables
 # assign the full node name, mmlsnode shows node name with dots: ltfs1.ltfs.net
@@ -172,6 +176,7 @@ if [[ -z $op || -z $fsName ]]; then
   echo "          migrate or premigrate: second argument can specify the policy file"
   echo "          check: second argument can specify scope of the check."
   echo "          bulkrecall: no second argument available".
+  echo "          reclaim: second argument includes pool, library and reclaim options".
   echo "          test: second argument includes a string to be written in log file."
   echo 
   echo "Exiting program."
@@ -221,6 +226,13 @@ case $op in
   # runs bulk recall, does not get any input
   cmd=$scriptPath/bulkRecall.sh
   # for bulk recall we should run a Spectrum Archive node, so we check if this is the active control node
+  singleton="archive";;
+
+"reclaim")
+  # runs reclaim, gets the reclaim parameters and options as second argument
+  # we expect a second argument to include the paramaters for the eeadm tape reclaim command 
+  # the second argument must be given as one string (e.g. "-p poolname -l libname -n 2 -G 50 -U 95")
+  cmd=$scriptPath"/eereclaim.sh $secArg"
   singleton="archive";;
 
 "test")
@@ -346,7 +358,7 @@ then
 fi
 
 # check if the file system exists
-echo "DEBUG: running mmlsfs $fsName" >> $logF
+# echo "DEBUG: running mmlsfs $fsName" >> $logF
 $gpfsPath/mmlsfs $fsName > /dev/null 2>&1
 rc=$?
 if (( rc > 0 ));
@@ -540,7 +552,7 @@ echo "$(date) LAUNCH: INFO Running command $cmd on node $execNode" >> $logF
 echo "-----------------------------------------------------------------------------------------------" >> $logF
 echo >> $logF
 if [[ "$localNode" == "$execNode" ]]; then
-  echo "  LAUNCH: DEBUG execNode ($execNode) = localNode ($localNode), running command on local node." >> $logF
+#  echo "  LAUNCH: DEBUG execNode ($execNode) = localNode ($localNode), running command on local node." >> $logF
   eval "$cmd" >> $logF 2>&1
   rc=$?
 else
