@@ -36,6 +36,10 @@
 #               for backup: it can specify the fileset name
 #               for migrate: it can specify the policy file name
 #               for check: it can specify the component
+# 				bulkrecall: no second argument available".
+# 				reclaim: second argument includes pool, library and reclaim options".
+#				reconcile: second argument includes pool, library, file system and other reconcile options".
+#				test: second argument includes a string to be written in log file."
 #
 #
 # Output: all output is logged to $logF
@@ -61,7 +65,15 @@
 # 08/14/20: include second argument in log file name, some streamlining (version 2.5)
 # 12/10/20: NYU: fix for checking the mount point of the file system: exact match (version 2.6)
 # 12/12/29: add Spectrum Archive reclaim, some streamlining (version 2.7)
+# 12/12/30: add Spectrum Archive reconcile, some streamlining (version 2.7)
 #******************************************************************************************************** 
+#
+
+# TODO
+# ----
+# - use file system name for reconcile
+#
+#
 
 # Export the path including the linux and GPFS binaries in case this script is invoked from a schedule
 export PATH=$PATH:/usr/bin:/usr/sbin:/usr/lpp/mmfs/bin
@@ -177,6 +189,7 @@ if [[ -z $op || -z $fsName ]]; then
   echo "          check: second argument can specify scope of the check."
   echo "          bulkrecall: no second argument available".
   echo "          reclaim: second argument includes pool, library and reclaim options".
+  echo "          reconcile: second argument includes pool, library, file system and other reconcile options".
   echo "          test: second argument includes a string to be written in log file."
   echo 
   echo "Exiting program."
@@ -232,7 +245,32 @@ case $op in
   # runs reclaim, gets the reclaim parameters and options as second argument
   # we expect a second argument to include the paramaters for the eeadm tape reclaim command 
   # the second argument must be given as one string (e.g. "-p poolname -l libname -n 2 -G 50 -U 95")
+  if [[ ! -z $secArg ]]; then
+    # extract pool name from secArg,  assumption it is followed by -p 
+	pName=""
+	pName=$(echo "$secArg" | awk '{ for(i=0; i<=NF; i++){ if ( $i=="-p" ){ (i==i++); print $i } } }')
+	if [[ ! -z $pName ]]; then
+	  lfPrefix=$lfPrefix"-"$pName
+	fi
+  fi
   cmd=$scriptPath"/eereclaim.sh $secArg"
+  # we set archive because this operation has to run on a Spectrum Archive node
+  singleton="archive";;
+
+"reconcile")
+  # runs reconcile, gets the reconcile parameters and options as second argument
+  # we expect a second argument to include the paramaters for the eeadm tape reconcile command 
+  # the second argument must be given as one string (e.g. "-p poolname -l libname -g fspath [--commit-to-tape]")
+  if [[ ! -z $secArg ]]; then
+    # extract pool name from secArg, assumption it is followed by -p 
+	pName=""
+	pName=$(echo "$secArg" | awk '{ for(i=0; i<=NF; i++){ if ( $i=="-p" ){ (i==i++); print $i } } }')
+	if [[ ! -z $pName ]]; then
+	  lfPrefix=$lfPrefix"-"$pName
+	fi
+  fi
+  cmd=$scriptPath"/eereconcile.sh $secArg"
+  # we set archive because this operation has to run on a Spectrum Archive node
   singleton="archive";;
 
 "test")
