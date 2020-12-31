@@ -26,7 +26,7 @@
 # 
 # Name: eereclaim.sh
 #
-# reclaim script for Spectrum Archive EE
+# reclaim script for Spectrum Archive EE when used with launcher
 # - reclaims tapes in accordance to the arguments given
 #
 # Invokation: eereclaim.sh reclaim-options
@@ -46,7 +46,7 @@
 # User defined variables
 # -------------------------
 # The following options for the reclaim command can be preset in this script or they are passed from launcher as second argument
-# If there is not second argument passed by launcher then these options are considered, otherwise the second argument is used
+# If there is no second argument passed by launcher then these options are considered, otherwise the second argument is used
 # For reclaim options see: https://www.ibm.com/support/knowledgecenter/en/ST9MBR_1.3.1/ee_eeadm_tape_reclaim.html
 # For example: reclaimOpts="-p poolname -l libname -U 70 -G 90 [-m 2 -C -n 2]"
 reclaimOpts=""
