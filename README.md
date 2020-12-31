@@ -17,6 +17,7 @@ The framework includes the following components:
 - The reclaim component [reclaim](eereclaim.sh) performs tape reclamation with IBM Spectrum Archive EE. The options for the reclaim command can be provided when the launcher script is invoked. 
 - The reconcile component [reconcile](eereconcile.sh) performs reconcilation for tape pools managed by IBM Spectrum Archive EE. The options for the reconcile command can be provided when the launcher script invoked. 
 
+There is also a test component that just tests the launcher script. 
 All components are futher detailed below.
 
 ## Disclaimer and license
@@ -73,11 +74,11 @@ This is the control component that is invoked by the scheduler. It checks if the
 	second-argument: 	is a second argument passed to the storage service script (optional)
 		for backup: 	it can specify the fileset name when required
 		for migrate: 	it can specify the policy file name
-		for check: 		it can specify the component, such as -e for all checks
+		for check: 	it can specify the component, such as -e for all checks
 		for bulkrecall: this argument is not required
 		for reclaim: 	it can specify the options for the reclaim command. 
 		for reconcile: 	it can specify the options for the reconcile command. 
-		for test: 		it can specify the text string which is written to the log file. 
+		for test: 	it can specify the text string which is written to the log file. 
 
 The file system name can also be defined within the launcher.sh script. In this case the file system name does not have to be given with call. If the file system name is given with the call then it takes precedence over the define file system name within the scrip. The file system name must either be given with the call or it must be defined within launcher script-
 
@@ -115,6 +116,9 @@ For each run the script `launcher.sh` creates a unique log file. The log files a
 | Migration | migrate_fsname-policyfile_date.log | Token `fsname` is the file system name given for the migration operation. If the policy file name is given as second parameter it is included in the log file name as token `policyfile` (the token `policyfile` is the base name of the policy file name without dot). |
 | Check | check_fsname-option_date.log | Token `fsname` is the file system name given for the check operation. If the check option is given as second paramter it is included in the log file name as token `option`. |
 | Bulkrecall | bulkrecall_fsname_date.log | Token `fsname` is the file system name given for the migration. |
+| Reclaim | reclaim_fsname-poolname_date.log | Token `fsname` is the file system name and `poolname` is the name of the tape pool given with the invokation. |
+| Reconcile| reconcile_fsname-poolname_date.log | Token `fsname` is the file system name and `poolname` is the name of the tape pool given with the invokation. |
+| Test | test_fsname_date.log | Token `fsname` is the file system name given with the invokation. |
 
 The token `date` in the log file name is the current time stamp in format: YYYYMMDDhhmmss.
 
@@ -194,6 +198,32 @@ Return codes:
 The return code is iherited from the storage service. If custom events are enabled and configured the program will send one event in accordance with the return code of the storage service operation. 
 
 
+For testing the test option can be used: 
+
+
+	# launcher.sh test gpfs0 "Text-String"
+
+This tests the launcher logic and eventually writes the `Text-String` into the log file. The test includes validation of cluster manager and file system state. 
+
+The log file name will be `reconcile_gpfs0-poolname_date.log`. 
+
+
+Upon completion of the storage service the launcher component can raise custom events. The custom events are defined in the file [custom.json](custom.json). This file must be copied to /usr/lpp/mmfs/lib/mmsysmon. If this file exists then the script will automatically raise events. If a custom.json exist for another reason and it is not desired to raise events the parameter sendEvent within the launcher script can be manually adjusted to a value of 0. 
+
+Note again, the launcher component does not write output the the console (STDOUT) but into a log file located in `/var/log/automation`. All other components write to STDOUT which is redirected into the log file by launcher. 
+
+
+Return codes:
+
+0 -  Operation completed SUCCESSFUL
+
+1 -  Operation completed with WARNING
+
+2 -  Operation completed with ERRORS
+
+The return code is iherited from the storage service. If custom events are enabled and configured the program will send one event in accordance with the return code of the storage service operation. 
+
+
 ### Enabling [custom events](custom.json)
 
 The launcher script can raise events in accordance to the return code of the storage service. The file [custom.json](custom.json) has three events defined:
@@ -228,6 +258,11 @@ More information [IBM Spectrum Scale Knowledge Center](https://www.ibm.com/suppo
 
 
 --------------------------------------------------------------------------------
+
+# Storage services scripts
+
+In accordance to the operations the launcher script is invoked for, one of the following storage services scripts is executed. 
+
 
 ## [backup](backup.sh)
 This is the backup component and performs the backup by executing the mmbackup command. It may optionally run the backup from a snapshot. It can also run the backup for a particular independent fileset if the fileset name is given with the call. 
