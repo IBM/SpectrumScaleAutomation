@@ -14,7 +14,8 @@ The framework includes the following components:
 - The storage tiering component [migrate](migrate.sh) performs pre-migration or migration using the mmapplypolicy-command
 - The check component performs checks of a certain component. It relies on a check script such as check_spectrumarchive. The check_spectrumarchive script can be obtained from this repo: [check_spectrumarchive](https://github.com/nhaustein/check_spectrumarchive).  
 - The bulkrecall component [bulkrecall](bulkRecall.sh) performs bulk recalls of files that are stored in a file list. The path and file name of the file list is configured within the bulkrecall program
-- The reclaim component [reclaim](eereclaim.sh) performs tape reclamation with IBM Spectrum Archive EE. The options for the reclaim command can be provided with the launcher script. 
+- The reclaim component [reclaim](eereclaim.sh) performs tape reclamation with IBM Spectrum Archive EE. The options for the reclaim command can be provided when the launcher script is invoked. 
+- The reconcile component [reconcile](eereconcile.sh) performs reconcilation for tape pools managed by IBM Spectrum Archive EE. The options for the reconcile command can be provided when the launcher script invoked. 
 
 All components are futher detailed below.
 
@@ -67,7 +68,7 @@ This is the control component that is invoked by the scheduler. It checks if the
 ### Invokation and processing
 
     # launcher.sh operation file-sytem-name [second-argument]
-	operation:			is the storage service to be performed: backup, migrate, check, bulkrecall, reclaim, test 
+	operation:			is the storage service to be performed: backup, migrate, check, bulkrecall, reclaim, reconcile or test 
 	file-system-name: 	is the name of the file system which is in scope of the storage service
 	second-argument: 	is a second argument passed to the storage service script (optional)
 		for backup: 	it can specify the fileset name when required
@@ -75,13 +76,18 @@ This is the control component that is invoked by the scheduler. It checks if the
 		for check: 		it can specify the component, such as -e for all checks
 		for bulkrecall: this argument is not required
 		for reclaim: 	it can specify the options for the reclaim command. 
+		for reconcile: 	it can specify the options for the reconcile command. 
+		for test: 		it can specify the text string which is written to the log file. 
 
 The file system name can also be defined within the launcher.sh script. In this case the file system name does not have to be given with call. If the file system name is given with the call then it takes precedence over the define file system name within the scrip. The file system name must either be given with the call or it must be defined within launcher script-
 
 The second-argument depends on the operation that is started by the launcher. 
 - For backup the second argument can be the name of an independent fileset. If the fileset name is given as second argument then the backup operation will be performed for this fileset. 
 - For storage tiering (migrate) the second argument can be the fully qualified path and file name of the policy file. If the policy file name is specified as second parameter is must not include blanks in the base file name. Altenatively the policy file name can be defined within the migrate.sh script.
-- For check the second argument can be the name of the component to be checked. For the check_spectrumarchive script the second argument should be set to "-e". 
+- For check the second argument can be the name of the component to be checked. For the check_spectrumarchive script the second argument should be set to "-e".
+- For reclaim the second argument can specify options for the `eeadm tape reclaim` command.
+- For reconcile the second argument can specify options for the `eeadm tape reconcile` command.
+- For test the second argument can specify a text string which is written to the log file. 
 
 
 The following parameters can be adjusted within the launcher script:
@@ -151,13 +157,25 @@ To run reclamation for a Spectrum Archive EE pool the options for the reclaim co
 	# launcher.sh reclaim gpfs0 -p poolname -l lib-name -U min-used-percentage -G min-reclaimable-percentage -n num-tapes
 
 
-For example, you want to reclaim tapes in a given pool (parameter `-p poolname -l libname`) that have more than 80 % used capacity (parameter `-U 80`) and more than 50 % reclaimable space (paramter `-G 50`). You can also specify to only reclaim 2 tapes with one reclaim process (parameter `-n 2`).
+All parameters given after the file system name (gpfs0) are interpreted by the Spectrum Archive command: `eeadm tape reclaim` ([More Information](https://www.ibm.com/support/knowledgecenter/en/ST9MBR_1.3.1/ee_eeadm_tape_reclaim.html)). For example, you want to reclaim tapes in a given pool (parameter `-p poolname -l libname`) that have more than 80 % used capacity (parameter `-U 80`) and more than 50 % reclaimable space (paramter `-G 50`). You can also specify to only reclaim 2 tapes with one reclaim process (parameter `-n 2`).
 	
 	
-	# launcher.sh reclaim -p poolname -l lib-name -U 80 -G 50 -n 2
+	# launcher.sh reclaim gpfs0 -p poolname -l lib-name -U 80 -G 50 -n 2
 
-The log file name will be `reclaim_gpfs0_date.log`. 
+The log file name will be `reclaim_gpfs0-poolname_date.log`. 
 
+
+To run reconcilation for a file system and a Spectrum Archive EE pool the options for the reconcile command must be specified after the file system (e.g. `gpfs0`). Use the following command: 
+
+
+	# launcher.sh reconcile gpfs0 -p poolname -l libname -g fspath [--commit-to-tape]
+
+All parameters given after the file system name (gpfs0) are interpreted by the Spectrum Archive command: `eeadm tape reconcile` ([More Information](https://www.ibm.com/support/knowledgecenter/en/ST9MBR_1.3.1/ee_eeadm_tape_reconcile.html)). For example, you want to reconcile tapes in a given pool (parameter `-p poolname -l libname`) that are used by file system `gpfs0` mounted on path `/ibm/gpfs0` then you can specify the reconcile options like this: 
+
+	
+	# launcher.sh reconcile gpfs0 -p poolname -l lib-name -g /ibm/gpfs0
+
+The log file name will be `reconcile_gpfs0-poolname_date.log`. 
 
 
 Upon completion of the storage service the launcher component can raise custom events. The custom events are defined in the file [custom.json](custom.json). This file must be copied to /usr/lpp/mmfs/lib/mmsysmon. If this file exists then the script will automatically raise events. If a custom.json exist for another reason and it is not desired to raise events the parameter sendEvent within the launcher script can be manually adjusted to a value of 0. 
@@ -371,13 +389,13 @@ This is the tape reclaim services that reclaims tapes in a pool managed by IBM S
 
 Invokation by launcher:
 
-	# eereclaim.sh gpfs0 [eeadm tape reclaim options]
+	# eereclaim.sh [eeadm tape reclaim options]
 	
 	
 The reclaim options are in accordance with the `eeadm tape reclaim` command [More Information]( https://www.ibm.com/support/knowledgecenter/en/ST9MBR_1.3.1/ee_eeadm_tape_reclaim.html). A typical scenario may be to reclaim tapes in a given pool (parameter `-p poolname -l libname`) that have more than 80 % used capacity (parameter `-U 80`) and more than 50 % reclaimable space (paramter `-G 50`). You can also specify to only reclaim 2 tapes with one reclaim process (parameter `-n 2`). When sufficient tape drives are available you can specify the number of parallel reclaim threads (parameter `-m 2`), this however requires Spectrum Archive EE version 1.3.1. Be aware that each reclaim thread needs at least two tape drives to be availeble. With this example the invokation of the launcher looks like this: 
 
 	
-	# launcher.sh reclaim -p poolname -l lib-name -U 80 -G 50 -n 2
+	# launcher.sh reclaim gpfs0 -p poolname -l lib-name -U 80 -G 50 -n 2
 
 
 The launcher component typically invokes the reclaim components with the file system name which is not used in the reclaim script. The launcher components checks if the file system is online prior to invoking the reclaim component. 
@@ -386,17 +404,52 @@ The following parameters can be adjusted within the reclaim script:
 
 | Parameter | Description |
 | ----------|-------------|
-| reclaimOpts | defines the command parameters and options for the reclaim command in a single string. If there are reclaim options given with the `eereclaim.sh`invokation than these paremeters and options defined in the script are ignored. For example, a valid options string is: `-p poolname -l libname -U 70 -G 80`. This reclaims all tapes in the pool that are have a used percentage of 70% and a minimum reclaimable percentage of 80%. Further reclaim options can be used. |
+| reclaimOpts | defines the command parameters and options for the `eeadm tape reclaim` command. The default value is "" (undefined). Normally the parameters for the reclaim command are passed with the `eereclaim.sh` invokation. If there are no parameters passed with the `eereclaim.sh` invokation, then the value of this parameter (`reclaimOpts`) is examined. If this parameter has values defined (within the script), then these values are used as command parameters for the `eeadm tape reconcile` command. For example, a valid options string is: `-p poolname -l libname -U 70 -G 80`. This reclaims all tapes in the pool that are have a used percentage of 70% and a minimum reclaimable percentage of 80%. Further reclaim options can be used. |
 
-All output is written to STDOUT which the launcher redirects to a log file named `var/log/automation/reclaim_timestamp.log`.
+All output is written to STDOUT which the launcher redirects to a log file named `var/log/automation/reclaim_fsname-poolname_timestamp.log`.
 
 Return codes:
 
 0 - Successfull operation
 
-1 - reclaim command returned 1
+1 - reclaim command returned 1 (happens on syntax errrors)
 
 2 - reclaim command failed
+
+--------------------------------------------------------------------------------
+
+## [reconcile](eereconcile.sh)
+
+This is the tape reconcile services that reconsiles tape pools that are use by file systems. This implementation is based on IBM Spectrum Archive EE (version 1.3.0.7 and above). The pool name, the library name and the further reconcile options can be given with the launcher component. Optionally, the reclaim options can be defined within this script. 
+
+Invokation by launcher:
+
+	# eereconcile.sh [eeadm tape reconcile options]
+	
+	
+The reconcile options are in accordance with the `eeadm tape reconcile` command [More Information]( https://www.ibm.com/support/knowledgecenter/en/ST9MBR_1.3.1/ee_eeadm_tape_reclaim.html). A typical scenario may be to reconcile all tapes given pool (parameter `-p poolname -l libname`) that are used by file system `/ibm/gpfs0`. With this example the invokation of the launcher looks like this: 
+
+	
+	# launcher.sh reconcile gpfs0 -p poolname -l lib-name -g /ibm/gpfs0
+
+
+The launcher component typically invokes the reconcile components with the file system name which is not used in the reclaim script. The launcher components checks if the file system is online prior to invoking the reconcile component. 
+
+The following parameters can be adjusted within the reclaim script:
+
+| Parameter | Description |
+| ----------|-------------|
+| reconcileOpts | defines the command parameters and options for the `eeadm tape reconcile` command. The default value is "" (undefined). Normally the parameters for the reconcile command are passed with the `eereconcile.sh` invokation. If there are no parameters passed with the `eereconcile.sh` invokation, then the value of this parameter (`reconcileOpts`) is examined. If this parameter has values defined (within the script), then these values are used as command parameters for the `eeadm tape reconcile` command. |
+
+All output is written to STDOUT which the launcher redirects to a log file named `var/log/automation/reconcile_fsname-poolname_timestamp.log`.
+
+Return codes:
+
+0 - Successfull operation
+
+1 - reconcile command returned 1 (happens on syntax errrors)
+
+2 - reconcile command failed
 
 
 --------------------------------------------------------------------------------
