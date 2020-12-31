@@ -261,7 +261,7 @@ More information [IBM Spectrum Scale Knowledge Center](https://www.ibm.com/suppo
 
 # Storage services scripts
 
-In accordance to the operations the launcher script is invoked for, one of the following storage services scripts is executed. 
+In accordance to the operations the launcher script is invoked for, one of the following storage services scripts is executed. These scripts are located in this repository. 
 
 
 ## [backup](backup.sh)
