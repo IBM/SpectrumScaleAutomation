@@ -3,7 +3,7 @@
 ################################################################################
 # The MIT License (MIT)                                                        #
 #                                                                              #
-# Copyright (c) 2019 Nils Haustein                             				   #
+# Copyright (c) 2020 Nils Haustein                             				   #
 #                                                                              #
 # Permission is hereby granted, free of charge, to any person obtaining a copy #
 # of this software and associated documentation files (the "Software"), to deal#
@@ -43,25 +43,30 @@
 # 10/18/19: added license for github
 # 11/14/19: add GPFS path for GPFS commands
 # 11/15/19: add policy file name passed with the call
+# 12/31/20: some streamlining
 # 
 #******************************************************************************************************** 
 #
-# Global definitions
-#--------------------
+#
+# User defined setting
+# ---------------------
+# adjust these settings when required
+# mmapplypolicy parameters 
+mmapplyOpts="-N nsdNodes -m 1 -B 1000 --single-instance"
 
-# default fully qualified path and file name of the policy fie. This is used if the policy file name is not given with the call
-def_polName="./migrate_policy.txt"
-
-# ADJUST: directory for temp files of policy engine (-s parameter), the default (/tmp)
+# directory for temp files of policy engine (-s parameter), the default (/tmp)
 workDir=""
 
-# ADJUST: mmapplypolicy parameters 
-mmapplyOpts="-N nsdNodes -m 1 -B 1000 --single-instance"
+# Global definitions
+#--------------------
+# only adjust these settings when required
+# default fully qualified path and file name of the policy fie. This is used if the policy file name is not given with the call
+def_polName="./migrate_policy.txt"
 
 
 # Constants
 # -----------
-
+# do not adjust these settings
 # GPFS path to binaries
 gpfsPath="/usr/lpp/mmfs/bin"
 
@@ -118,22 +123,16 @@ echo "$(date) MIGRATE: Starting  migration for file system $fsName with policyfi
 echo "DEBUG: mmapplypolicy $fsName -P $polName $mmapplyOpts"
 $gpfsPath/mmapplypolicy $fsName -P $polName $mmapplyOpts
 rc=$?
-echo "$(date) MIGRATE: Finished migration (rc=$rc)"
-if (( rc > 0 ));
-then
-  echo "MIGRATE: ERROR Migration failed with return code $rc"
-  (( globalRC=globalRC+1 ))
-fi
 
 
 # present ending banner
-echo "$(date) MIGRATE: operation ended on $(hostname) for file system $fsName with policy $polName with gobalRC=$globalRC."
-if (( globalRC > 0 ));
-then
-  exit $rcErr
-else 
+echo "$(date) MIGRATE: Finished migration (rc=$rc)"
+if (( rc == 0 )); then
   exit $rcGood
+elif (( rc == 1 )); then 
+  exit $rcWarn
+else 
+  exit $rcErr
 fi
-
 
 
